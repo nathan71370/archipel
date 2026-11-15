@@ -1,7 +1,7 @@
 {
   "name": "archipel",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "node server/index.js --dev",
@@ -9,6 +9,7 @@
     "start": "node server/index.js"
   },
   "dependencies": {
+    "limperiam-auth-client": "github:nathan71370/limperiam-auth-client",
     "three": "^0.170.0",
     "ws": "^8.18.0"
   },

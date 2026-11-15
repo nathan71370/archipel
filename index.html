@@ -182,6 +182,7 @@
   .palette { display:flex; flex-wrap:wrap; gap:3px; }
   .palette .slot { width:40px; height:40px; border-radius:7px; cursor:pointer; } .palette .slot:hover { border-color:rgba(255,246,233,.5); }
   .palette .slot img { width:28px; height:28px; }
+  body.sso .lan { display:none; }
   #padname { width:100%; box-sizing:border-box; flex:none; }
   #chat { position:absolute; left:16px; bottom:120px; width:min(420px, 46vw); font-size:13px; font-weight:600; }
   #chatlog { display:flex; flex-direction:column; gap:2px; max-height:190px; overflow:hidden; }
@@ -300,10 +301,10 @@
       <div class="field"><label for="pseudo">Pseudo</label><input type="text" id="pseudo" maxlength="16" placeholder="Voyageur"></div>
       <h2>Parties sur le réseau</h2>
       <div id="servers"><div class="muted">Recherche…</div></div>
-      <h2>Rejoindre par adresse</h2>
-      <div class="field"><input type="text" id="ip" placeholder="192.168.1.20 ou 192.168.1.20:5180"><button class="big small" id="joinip">Rejoindre</button></div>
+      <h2 class="lan">Rejoindre par adresse</h2>
+      <div class="field lan"><input type="text" id="ip" placeholder="192.168.1.20 ou 192.168.1.20:5180"><button class="big small" id="joinip">Rejoindre</button></div>
       <div id="mperror"></div>
-      <p id="hostinfo"></p>
+      <p id="hostinfo" class="lan"></p>
       <button class="link" data-back>Retour</button>
     </div>
   </div>

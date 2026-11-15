@@ -16,6 +16,7 @@ export const SMELT = [
   rec([[B.LOG, 1]], [I.COAL, 1], 6),
 ];
 const MILL = [
+  rec([[B.CRYSTAL, 2]], [I.GEM, 1], 5),
   rec([[I.IRON, 1]], [I.PLATE, 1], 4),
   rec([[I.COPPER, 1]], [I.WIRE, 3], 3),
 ];

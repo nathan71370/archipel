@@ -81,6 +81,13 @@ $('newworld').addEventListener('click', () => {
 
 const pseudo = $('pseudo');
 pseudo.value = localStorage.getItem('archipel-name') ?? '';
+// Hébergé derrière le SSO : le pseudo est celui du compte, et la seule partie en ligne est celle de ce serveur.
+fetch('/api/me').then((r) => r.json()).then((me) => {
+  if (!me.auth) return;
+  pseudo.value = me.pseudo;
+  pseudo.readOnly = true;
+  document.body.classList.add('sso');
+}).catch(() => {});
 $('multi').addEventListener('click', () => showMenu('multi'));
 
 async function refreshServers() {
@@ -225,7 +232,7 @@ function startGame({ net = null, welcome = null }) {
     drop: (d, x, y, z, st) => drops.spawn({ d, p: [x + 0.5, y + 0.6, z + 0.5], v: [(Math.random() - 0.5) * 2, 3, (Math.random() - 0.5) * 2], s: st }),
     power: (d) => { if (d === dim) world.applyPower(sim.dims[d].powered); },
     explode: (d, x, y, z, r) => { if (d === dim) blast(x, y, z, r); },
-    active: () => {},
+    active: (d) => { if (d === dim) world.applyActive(sim.dims[d].active); },
     vis: (d, k, v) => { if (d === dim) onVis(k, v); },
     // Une culture pousse (ou meurt) : dans le monde affiché si c'est le nôtre, sinon directement dans ses modifications.
     setBlock: (d, x, y, z, id, meta) => {
@@ -253,6 +260,7 @@ function startGame({ net = null, welcome = null }) {
     const w = new World(seed, d, editsByDim[d], scene, mats);
     w.powered = poweredSet(d);
     w.vis = visOf(d);
+    w.active = activeSet(d);
     w.onModels = (key, list) => modelView.sync(key, list);
     w.onModelsVisible = (key, v) => modelView.setVisible(key, v);
     w.onEdit = (x, y, z, id) => {
@@ -653,6 +661,56 @@ function startGame({ net = null, welcome = null }) {
     ui.toast(d === 2 ? "L'Éther. Pas d'air ici : surveille ton oxygène." : d === 1 ? 'Tu entres dans la Braise. Reste sur tes gardes.' : 'Retour sous le ciel.');
   }
 
+  // ---------- Manger, avaler, fumer ----------
+  let eating = null;
+  const puffs = []; // miettes et volutes : petits cubes qui vivent une seconde ou deux
+  function puff(color, smoke) {
+    const m = new THREE.Mesh(PUFF_GEO, new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false, fog: false }));
+    const side = (Math.random() - 0.5) * 0.25;
+    m.position.copy(camera.position).addScaledVector(dir, smoke ? 0.9 : 0.45);
+    m.position.x += -dir.z * side; m.position.z += dir.x * side; m.position.y -= smoke ? 0.12 : 0.2;
+    m.scale.setScalar(smoke ? 0.3 : 0.22);
+    scene.add(m);
+    puffs.push({ m, smoke, life: smoke ? 2.2 : 0.6, max: smoke ? 2.2 : 0.6,
+      v: smoke ? [dir.x * 0.9 + (Math.random() - 0.5) * 0.3, 0.35 + Math.random() * 0.3, dir.z * 0.9 + (Math.random() - 0.5) * 0.3] : [(Math.random() - 0.5) * 0.8, 0.6, (Math.random() - 0.5) * 0.8] });
+  }
+  function updateEating(dt) {
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const p = puffs[i];
+      p.life -= dt;
+      if (p.smoke) { p.v[0] *= 1 - dt; p.v[2] *= 1 - dt; p.m.scale.multiplyScalar(1 + dt * 0.9); } else p.v[1] -= 6 * dt;
+      p.m.position.x += p.v[0] * dt; p.m.position.y += p.v[1] * dt; p.m.position.z += p.v[2] * dt;
+      p.m.material.opacity = Math.max(0, p.life / p.max) * (p.smoke ? 0.55 : 1);
+      if (p.life <= 0) { scene.remove(p.m); p.m.material.dispose(); puffs.splice(i, 1); }
+    }
+    if (!eating) return;
+    const st = inv.slots[eating.slot], it = st && ITEMS[st.id];
+    if (mode !== 'play' || !input.use || selected !== eating.slot || !st || st.id !== eating.id) { eating = null; return; }
+    eating.t += dt;
+    if (it.smoke) {
+      // On tire, puis on souffle : la fumée sort aux deux tiers.
+      if (!eating.puffed && eating.t > eating.dur * 0.62) { eating.puffed = true; for (let i = 0; i < 9; i++) setTimeout(() => puff(0xe9e6f2, true), i * 70); snd.noise(0.9, 0.035, 900, 0.5, 'lowpass', 0.6); }
+    } else if ((eating.next -= dt) <= 0) {
+      eating.next = 0.24;
+      puff(it.color ?? 0xd9a35f, false);
+      snd.noise(0.06, 0.07, 500 + Math.random() * 300, 1.2, 'bandpass');
+    }
+    if (eating.t < eating.dur) return;
+    // Terminé : l'effet s'applique.
+    if (it.fx) {
+      const [k, t] = it.fx;
+      fx[k] = Math.min(300, (fx[k] ?? 0) + t);
+      ui.toast(`${FX[k].name} : ${FX[k].tip}.`);
+      blip(420, 0.25, 'sine', 0.05); blip(630, 0.35, 'sine', 0.04);
+    }
+    if (it.food) { player.hunger = Math.min(20, player.hunger + it.food); blip(330, 0.1, 'triangle'); }
+    if (!creative && --st.n <= 0) inv.slots[eating.slot] = null;
+    eating = null;
+    useCd = 0.5; dirty = true;
+    ui.refreshHotbar(selected);
+  }
+  const PUFF_GEO = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+
   // ---------- Voyage en fusée ----------
   // La fusée quitte son bloc, monte jusqu'à disparaître, puis descend se poser dans l'autre monde : c'est la même.
   let trip = null;
@@ -970,7 +1028,7 @@ function startGame({ net = null, welcome = null }) {
     closeChat();
     if (!text) return;
     if (text.startsWith('/')) { say(text, 'me'); try { command(text); } catch { say('Commande impossible.'); } return; }
-    say(`${net ? pseudo.value.trim() || 'Voyageur' : 'Toi'} : ${text}`, 'me');
+    say(`${net ? welcome.name ?? (pseudo.value.trim() || 'Voyageur') : 'Toi'} : ${text}`, 'me');
     if (net) net.send({ t: 'chat', text });
   }
   const plain = (t) => t.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
@@ -1003,6 +1061,8 @@ function startGame({ net = null, welcome = null }) {
   ];
   function command(line) {
     const args = line.slice(1).trim().split(/\s+/), cmd = plain(args.shift() ?? '');
+    // Sur un serveur à comptes, seuls les administrateurs ont les commandes de triche.
+    if (multi && welcome.admin === false && cmd !== 'help' && cmd !== 'aide') { say('Commande réservée aux administrateurs de ce serveur.'); return; }
     if (cmd === 'gamemode' || cmd === 'gm' || cmd === 'mode') {
       const a = plain(args[0] ?? '');
       if (['creative', 'creatif', 'c', '1'].includes(a)) setCreative(true);
@@ -1175,7 +1235,7 @@ function startGame({ net = null, welcome = null }) {
       const left = collect(m.s);
       if (left > 0) dropStack({ ...m.s, n: left }, false);
     });
-    net.on('act', (m) => { activeByDim[m.d] = new Set(m.keys); });
+    net.on('act', (m) => { activeByDim[m.d] = new Set(m.keys); if (m.d === dim) world.applyActive(activeByDim[m.d]); });
     net.on('vis', (m) => { if (m.v == null) visByDim[m.d].delete(m.k); else visByDim[m.d].set(m.k, m.v); if (m.d === dim) onVis(m.k, m.v ?? 0); });
     net.on('chat', (m) => say(`${m.name} : ${m.text}`, 'other'));
     net.on('time', (m) => { sky.time = m.v; });
@@ -1471,7 +1531,7 @@ function startGame({ net = null, welcome = null }) {
       else if (id === B.HAMMOCK) {
         if (dim !== 0 || !sky.night) ui.toast('On ne dort que la nuit, sous le ciel.');
         else {
-          if (net) net.send({ t: 'cmd', c: 'time', v: 0.27 }); else sky.time = 0.27;
+          if (net) net.send({ t: 'cmd', c: 'time', v: 0.27, sleep: true }); else sky.time = 0.27;
           player.hp = Math.min(20, player.hp + 6);
           fade.classList.add('on'); setTimeout(() => fade.classList.remove('on'), 500);
           ui.toast('Tu dors jusqu\'au matin.');
@@ -1500,23 +1560,10 @@ function startGame({ net = null, welcome = null }) {
       blip(760, 0.12, 'square', 0.05); swing = 1; useCd = 0.6;
       return;
     }
-    if (it.fx) {
-      // Substance : un effet passager. En reprendre rallonge la durée, jusqu'à cinq minutes.
-      const [k, t] = it.fx;
-      fx[k] = Math.min(300, (fx[k] ?? 0) + t);
-      if (!creative && --held.n <= 0) inv.slots[selected] = null;
-      ui.toast(`${FX[k].name} : ${FX[k].tip}.`);
-      blip(420, 0.25, 'sine', 0.05); blip(630, 0.35, 'sine', 0.04);
-      swing = 1; useCd = 0.6; dirty = true;
-      ui.refreshHotbar(selected);
-      return;
-    }
-    if (it.food) {
-      if (player.hunger >= 20) return;
-      player.hunger = Math.min(20, player.hunger + it.food);
-      if (!creative && --held.n <= 0) inv.slots[selected] = null;
-      blip(330, 0.1, 'triangle'); swing = 1; useCd = 0.45; dirty = true;
-      ui.refreshHotbar(selected);
+    if (it.fx || it.food) {
+      // Manger, avaler ou fumer prend un instant : on garde le clic droit enfoncé, la main monte à la bouche.
+      if (it.food && !it.fx && player.hunger >= 20) return;
+      if (!eating) eating = { slot: selected, id: held.id, t: 0, dur: it.smoke ? 2.2 : it.food ? 1.3 : 0.9, next: 0, puffed: false };
       return;
     }
     if (held.id === I.BAIT && target) {
@@ -1625,6 +1672,7 @@ function startGame({ net = null, welcome = null }) {
   // Pas, vent et bruit des machines proches.
   const GLIDER_COLOR = { 1: 0xe8795a, 2: 0xf4c95d, 3: 0x4a4f63, 4: 0xbfd4ff };
   let chokeTimer = 0;
+  let eatLift = 0;
   let stepDist = 0, lastX = player.pos.x, lastZ = player.pos.z;
   function ambience(dt, running) {
     if (!running) { snd.hush(); return; }
@@ -1715,7 +1763,7 @@ function startGame({ net = null, welcome = null }) {
       survival(dt);
       if (playing) padStep(dt);
       if (mobSim) {
-        mobSim.update(dt, { dim, night: sky.night, players: [{ id: 0, pos: player.pos, alive: mode !== 'dead' }], safe: safeSpot, turrets: world.turrets });
+        mobSim.update(dt, { dim, night: sky.night, players: [{ id: 0, pos: player.pos, alive: mode !== 'dead' && !creative }], safe: safeSpot, turrets: world.turrets });
         mobView.sync(mobSim.rows());
       }
       if (fluids?.update(dt)) world.meshAllDirty();
@@ -1781,6 +1829,16 @@ function startGame({ net = null, welcome = null }) {
     const sw = Math.sin(swing * Math.PI);
     hand.position.set(HAND_POS.x - sw * 0.06, HAND_POS.y + Math.sin(bob) * 0.012 - sw * 0.05, HAND_POS.z - sw * 0.1);
     hand.rotation.set(-sw * 0.95, sw * 0.25, 0);
+    updateEating(dt);
+    eatLift += ((eating ? 1 : 0) - eatLift) * Math.min(1, dt * 9);
+    if (eatLift > 0.01) {
+      // La main vient devant la bouche ; on mâche par petits coups, ou on tient le joint aux lèvres.
+      const smoke = eating && ITEMS[eating.id].smoke, chew = eating && !smoke ? Math.sin(eating.t * 20) * 0.02 : 0;
+      hand.position.x += (0.06 - hand.position.x) * eatLift;
+      hand.position.y += (-0.17 + chew - hand.position.y) * eatLift;
+      hand.position.z += (-0.42 - hand.position.z) * eatLift;
+      hand.rotation.x += (smoke ? 0.1 : -0.5) * eatLift; hand.rotation.y += (smoke ? -0.9 : 0.5) * eatLift;
+    }
     hand.visible = !player.gliding && !trip;
 
     for (let i = tracers.length - 1; i >= 0; i--) {
@@ -1817,7 +1875,7 @@ function startGame({ net = null, welcome = null }) {
       netTimer = 0.1;
       const r = (v) => Math.round(v * 100) / 100;
       // Position, puis ce que les autres voient de nous : objet tenu, armure, accroupi.
-      net.send({ t: 'pos', s: [dim, r(player.pos.x), r(player.pos.y), r(player.pos.z), r(player.yaw), r(player.pitch), player.gliding ? 1 : 0, mode === 'dead' ? 0 : 1,
+      net.send({ t: 'pos', s: [dim, r(player.pos.x), r(player.pos.y), r(player.pos.z), r(player.yaw), r(player.pitch), player.gliding ? 1 : 0, mode === 'dead' || creative ? 0 : 1, // « hors jeu » pour les créatures : mort, ou en créatif
         inv.slots[selected]?.id ?? 0, ...inv.armor.map((a) => a?.id ?? 0), player.sneaking ? 1 : 0] });
     }
 

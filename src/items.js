@@ -40,7 +40,7 @@ export const I = {
   BIO_HELM: 230, BIO_CHEST: 231, BIO_LEGS: 232, BIO_BOOTS: 233,
   MOD_NIGHT: 234, MOD_AIR: 235, MOD_MAGNET: 236, MOD_SHIELD: 237, MOD_SPEED: 238, MOD_SPRING: 239, ENGINE: 240, STEEL: 242, ELECTRUM: 243, CAN: 244, SHEARS: 250,
   // Au-delà de 255 les blocs prennent le relais (256 à 399) ; les objets reprennent à 400.
-  FILTER: 400,
+  FILTER: 400, GEM: 426,
   SEED_H0: 401, SEED_H1: 402, SEED_H2: 403, SEED_H3: 404, BUD0: 405, BUD1: 406, BUD2: 407, COCA_LEAF: 408,
   DRY0: 409, DRY1: 410, DRY2: 411, DRY_COCA: 412, RESIN: 413, PASTE: 414,
   E_C: 415, E_H: 416, E_O: 417, E_N: 418, BASE: 419, ECSTASY: 420, COCAINE: 421,
@@ -205,7 +205,7 @@ export const TIERS = [
   { name: 'en bois', mat: B.PLANKS, color: 0xc99a6b, speed: 2, dur: 60, dmg: 1 },
   { name: 'en roche', mat: B.STONE, color: 0x8d8fa3, speed: 3.2, dur: 130, dmg: 2 },
   { name: 'en fer', mat: I.IRON, color: 0xdfe3ea, speed: 5, dur: 300, dmg: 3 },
-  { name: 'en cristal', mat: B.CRYSTAL, color: 0x5fdcf5, speed: 7, dur: 600, dmg: 4 },
+  { name: 'en cristal', mat: 426, color: 0x5fdcf5, speed: 7, dur: 600, dmg: 4 },
   { name: 'de braise', mat: I.EMBER_SHARD, color: 0xff7a3d, speed: 9, dur: 1000, dmg: 6 },
   { name: 'stellaire', mat: I.STAR, color: 0xfff1a8, speed: 13, dur: 2500, dmg: 9 },
 ];
@@ -314,6 +314,7 @@ Object.assign(ITEMS, {
   [I.ECSTASY]: { name: 'Ecstasy', shape: 'ammo', color: 0xff8ad1, stack: 99, fx: ['euphoria', 120] },
   [I.COCAINE]: { name: 'Cocaïne', shape: 'dustp', color: 0xffffff, stack: 99, fx: ['rush', 90] },
   [I.PAPER]: { name: 'Papier', shape: 'plate', color: 0xf7f2e4, stack: 99 },
+  [I.GEM]: { name: 'Cristal taillé', shape: 'lump', color: 0x5fdcf5, stack: 99 },
   [I.FILTER]: { name: 'Filtre', shape: 'circuit', color: 0xf4c95d, stack: 16 },
   [I.CAN]: { name: 'Bidon vide', shape: 'cell', color: 0xc7ccd9, stack: 16 },
   [I.FUEL]: { name: 'Bidon de carburant', shape: 'cell', color: 0xff8a3d, stack: 16 },
@@ -343,7 +344,7 @@ HERBS.forEach((h, v) => {
   if (coca) return;
   ITEMS[h.fresh] = { name: `Tête fraîche « ${h.name} »`, shape: 'berries', color: h.color, stack: 99 };
   ITEMS[h.dry] = { name: `Tête séchée « ${h.name} »`, shape: 'berries', color: (h.color & 0xfefefe) >> 1 | 0x302010, stack: 99 };
-  ITEMS[h.joint] = { name: `Joint « ${h.name} »`, shape: 'stick', color: 0xf7f2e4, stack: 16, fx: [h.fx, 90] };
+  ITEMS[h.joint] = { name: `Joint « ${h.name} »`, shape: 'joint', color: h.color, stack: 16, fx: [h.fx, 90], smoke: true };
 });
 ITEMS[B.TANK].stack = 1; // un réservoir garde son contenu : il ne s'empile pas
 
@@ -385,7 +386,7 @@ export const levelOf = (xp) => Math.floor(Math.sqrt(xp / 10));
 // ---------- Recettes ----------
 export const STATIONS = { bench: 'Établi' };
 // Ordre d'affichage des catégories dans l'écran de fabrication.
-export const CATS = ['Bases', 'Outils', 'Armures', 'Construction', 'Rangement', 'Logistique', 'Machines', 'Énergie', 'Combat', 'Exploration', 'Chimie'];
+export const CATS = ['Bases', 'Outils', 'Armures', 'Cuisine', 'Construction', 'Rangement', 'Logistique', 'Machines', 'Énergie', 'Combat', 'Exploration', 'Chimie'];
 export const RECIPES = [];
 const R = (cat, out, n, ins, station = null) => RECIPES.push({ cat, out, n, ins, station });
 
@@ -416,12 +417,12 @@ R('Armures', I.BIO_HELM, 1, [[I.TITAN, 5], [I.COMPOSITE, 2], [I.ELECTRUM, 2]], '
 R('Armures', I.BIO_CHEST, 1, [[I.TITAN, 8], [I.COMPOSITE, 4], [I.ELECTRUM, 3]], 'bench');
 R('Armures', I.BIO_LEGS, 1, [[I.TITAN, 7], [I.COMPOSITE, 3], [I.ELECTRUM, 2]], 'bench');
 R('Armures', I.BIO_BOOTS, 1, [[I.TITAN, 4], [I.COMPOSITE, 2], [I.ELECTRUM, 2]], 'bench');
-R('Bases', I.HOE, 1, [[I.IRON, 2], [I.STICK, 2]], 'bench');
-R('Bases', I.BREAD, 1, [[I.WHEAT, 3]]);
-R('Bases', I.SOUP, 1, [[I.MUSHROOM, 3]]);
+R('Outils', I.HOE, 1, [[I.IRON, 2], [I.STICK, 2]], 'bench');
+R('Cuisine', I.BREAD, 1, [[I.WHEAT, 3]]);
+R('Cuisine', I.SOUP, 1, [[I.MUSHROOM, 3]]);
 R('Bases', B.TORCH, 4, [[I.STICK, 1], [I.COAL, 1]]);
 R('Bases', B.TORCH, 4, [[I.STICK, 1], [I.JELLY, 1]]);
-R('Bases', I.PIE, 1, [[I.WHEAT, 2], [I.MEAT_COOKED, 1], [I.BERRIES, 2]], 'bench');
+R('Cuisine', I.PIE, 1, [[I.WHEAT, 2], [I.MEAT_COOKED, 1], [I.BERRIES, 2]], 'bench');
 TIERS.forEach((tier, ti) => TOOLS.forEach((tool, k) => R('Outils', toolId(ti, k), 1, [[tier.mat, tool.n], [I.STICK, tool.sticks]], 'bench')));
 ARMOR_TIERS.forEach((at, ti) => ARMOR.forEach((a, k) => R('Armures', armorId(ti, k), 1, [[TIERS[at.tier].mat, a.n]], 'bench')));
 R('Construction', B.STONE_BRICK, 4, [[B.STONE, 4]], 'bench');
@@ -434,8 +435,8 @@ R('Armures', I.CHITIN_BOOTS, 1, [[I.CHITIN, 3]], 'bench');
 R('Rangement', B.CHEST, 1, [[B.PLANKS, 8]], 'bench');
 R('Rangement', B.DRAWER, 1, [[B.PLANKS, 4], [I.PLATE, 2]], 'bench');
 R('Rangement', B.TERMINAL, 1, [[I.PLATE, 4], [I.CIRCUIT, 4], [B.CRYSTAL, 2]], 'bench');
-R('Logistique', I.WRENCH, 1, [[I.IRON, 2], [I.STICK, 1]], 'bench');
-R('Logistique', I.BUCKET, 1, [[I.IRON, 3]], 'bench');
+R('Outils', I.WRENCH, 1, [[I.IRON, 2], [I.STICK, 1]], 'bench');
+R('Outils', I.BUCKET, 1, [[I.IRON, 3]], 'bench');
 R('Logistique', B.ITEM_PIPE, 8, [[I.PLATE, 2]], 'bench');
 R('Logistique', B.FLUID_PIPE, 8, [[I.PLATE, 2], [I.COPPER, 1]], 'bench');
 R('Logistique', B.TANK, 1, [[I.PLATE, 4], [B.CRYSTAL, 2]], 'bench');
@@ -444,7 +445,7 @@ R('Machines', B.STONER, 1, [[I.PLATE, 4], [I.CIRCUIT, 2], [I.BUCKET_WATER, 1], [
 R('Machines', B.GROWER, 1, [[I.PLATE, 4], [I.CIRCUIT, 2], [B.CRYSTAL, 2], [B.DIRT, 4]], 'bench');
 R('Machines', B.WASHER, 1, [[I.PLATE, 4], [I.CIRCUIT, 2], [I.BUCKET, 1]], 'bench');
 R('Énergie', B.LAVA_GEN, 1, [[I.PLATE, 6], [I.CIRCUIT, 2], [B.BASALT, 4]], 'bench');
-R('Exploration', I.COMPASS, 1, [[I.IRON, 2], [B.CRYSTAL, 1]], 'bench');
+R('Outils', I.COMPASS, 1, [[I.IRON, 2], [B.CRYSTAL, 1]], 'bench');
 R('Exploration', I.BAIT, 1, [[I.EMBER_SHARD, 4], [I.DUST, 4], [B.URANITE, 1]], 'bench');
 R('Exploration', I.WINGS, 1, [[I.HEART, 1], [I.JETPACK, 1], [I.FEATHER, 8], [I.FROST, 4]], 'bench');
 R('Machines', B.CONDENSER, 1, [[I.PLATE, 6], [I.CIRCUIT, 4], [I.FEATHER, 4], [B.CRYSTAL, 2]], 'bench');
@@ -469,7 +470,7 @@ R('Combat', I.GUN, 1, [[I.IRON, 5], [I.COPPER, 2], [B.CRYSTAL, 2], [B.PLANKS, 2]
 R('Combat', I.AMMO, 6, [[I.COPPER, 1], [I.COAL, 1]], 'bench');
 R('Combat', I.AMMO, 12, [[I.COPPER, 1], [I.DUST, 1]], 'bench');
 R('Combat', B.TNT, 2, [[I.DUST, 2], [I.COAL, 2], [B.PLANKS, 1]], 'bench');
-R('Bases', I.SHEARS, 1, [[I.IRON, 2]], 'bench');
+R('Outils', I.SHEARS, 1, [[I.IRON, 2]], 'bench');
 R('Construction', B.STEEL_BLOCK, 4, [[I.STEEL, 4]], 'bench');
 R('Construction', B.MOONBRICK, 4, [[B.MOONROCK, 4]], 'bench');
 R('Machines', B.HARVESTER, 1, [[I.STEEL, 4], [I.CIRCUIT, 3], [I.SHEARS, 1]], 'bench');
@@ -478,7 +479,7 @@ R('Exploration', B.TELEPAD, 2, [[I.STEEL, 4], [I.ELECTRUM, 4], [B.CRYSTAL, 4], [
 R('Exploration', B.HAMMOCK, 1, [[B.PLANKS, 3], [B.WOOL, 2], [I.STICK, 2]], 'bench');
 R('Exploration', B.HAMMOCK, 1, [[B.PLANKS, 3], [I.FEATHER, 4], [I.STICK, 2]], 'bench');
 R('Construction', B.BOUNCE, 1, [[I.JELLY, 4]], 'bench');
-R('Exploration', I.HOOK, 1, [[I.IRON, 3], [I.STICK, 4]], 'bench');
+R('Outils', I.HOOK, 1, [[I.IRON, 3], [I.STICK, 4]], 'bench');
 R('Exploration', B.BEACON, 1, [[B.PLANKS, 3], [I.FEATHER, 2], [B.CRYSTAL, 1]], 'bench');
 R('Exploration', B.PORTAL, 1, [[B.SLATE, 4], [B.CRYSTAL, 4], [I.DUST, 2]], 'bench');
 

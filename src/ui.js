@@ -12,12 +12,19 @@ const RECIPE_TEXT = RECIPES.map((r) => norm(ITEMS[r.out].name + ' | ' + r.ins.ma
 // Guide : ce qui se fabrique dans les machines, cherchable comme les recettes.
 const GUIDE_TEXT = GUIDE.map((g) => norm(ITEMS[g.out[0]].name + ' | ' + BLOCKS[g.where].name + ' | ' + g.ins.map(([id]) => ITEMS[id].name).join(' | ')));
 // Palette du mode créatif : tous les objets du jeu, par famille.
+// Familles du mode créatif. Utilitaires : ce qu'on pose pour s'en servir, sans que ce soit une machine.
+const UTIL = new Set([B.BENCH, B.ALTAR, B.MODBENCH, B.HAMMOCK, B.BEACON, B.PORTAL, B.ROCKET, B.TORCH, B.LANTERN, B.LAMP, B.TNT, B.TELEPAD, B.BOUNCE, B.FARMLAND, B.LIGHTHOUSE]);
+const LOGI = new Set([B.CABLE, B.ITEM_PIPE, B.FLUID_PIPE, B.CHEST, B.DRAWER, B.TERMINAL, B.TANK, B.PUMP]);
+const HAND = new Set([204, 250, 176, 194, 173, 174, 175]); // houe, cisailles, clé, boussole, seaux
+const PIPING = new Set([400, 244, 227, 228]); // filtre, bidons, cartouche d'oxygène
 const PALETTE = Object.keys(ITEMS).map(Number).filter((id) => !ITEMS[id].legacy && !(id > 60 && id < 78)).map((id) => {
   const it = ITEMS[id];
-  const fam = it.block ? (MACHINES[id] || ELECTRIC.has(id) || id === B.ITEM_PIPE || id === B.FLUID_PIPE ? 'Machines' : 'Blocs') : it.tool || it.gun || it.hook ? 'Outils' : it.armor ? 'Armures' : it.food ? 'Nourriture' : 'Objets';
+  const fam = it.block
+    ? (UTIL.has(id) ? 'Utilitaires' : LOGI.has(id) ? 'Logistique' : MACHINES[id] || ELECTRIC.has(id) ? 'Machines' : 'Blocs')
+    : it.tool || it.gun || it.hook || it.glide || HAND.has(id) ? 'Outils' : it.armor || it.mod ? 'Armures' : it.fx ? 'Substances' : it.food ? 'Nourriture' : PIPING.has(id) ? 'Logistique' : 'Objets';
   return { id, fam, text: norm(it.name) };
 });
-const FAMS = ['Blocs', 'Machines', 'Outils', 'Armures', 'Nourriture', 'Objets'];
+const FAMS = ['Blocs', 'Utilitaires', 'Machines', 'Logistique', 'Outils', 'Armures', 'Nourriture', 'Substances', 'Objets'];
 // Notices : les montages qui ne se devinent pas. Affichées dans le guide, trouvées par la recherche.
 const NOTES = [
   { title: 'Réacteur nucléaire (400 W)', icon: B.CORE, find: 'reacteur nucleaire coeur blindage uranium barre fission', steps: [

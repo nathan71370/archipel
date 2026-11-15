@@ -1,0 +1,34 @@
+# Stack Docker Compose d'Archipel (Komodo) : un seul conteneur, le jeu et la partie en ligne.
+# Connexion déléguée à limperiam-auth (app `archipel`, à créer dans /admin et à ouvrir aux bons groupes) :
+# le compte SSO est le compte du jeu. Suppose un réseau externe `traefik` et TLS sur `websecure`.
+# Le monde et les personnages vivent dans le volume, fichier /data/world.json.
+services:
+  archipel:
+    container_name: archipel
+    build: .
+    image: archipel:latest
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      ARCHIPEL_NAME: "${ARCHIPEL_NAME:-Archipel}"
+      AUTH_INTERNAL_URL: "${AUTH_INTERNAL_URL:-http://limperiam-auth:3000}"
+      AUTH_PUBLIC_URL: "${AUTH_PUBLIC_URL:-https://auth.limperiam.com}"
+      AUTH_APP_SLUG: "${AUTH_APP_SLUG:-archipel}"
+      PUBLIC_ORIGIN: "https://${ARCHIPEL_HOST:-archipel.limperiam.com}"
+    volumes:
+      - archipel-data:/data
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.archipel.rule=Host(`${ARCHIPEL_HOST:-archipel.limperiam.com}`)"
+      - "traefik.http.routers.archipel.entrypoints=websecure"
+      - "traefik.http.routers.archipel.tls=true"
+      - "traefik.http.services.archipel.loadbalancer.server.port=3000"
+
+volumes:
+  archipel-data:
+
+networks:
+  traefik:
+    external: true

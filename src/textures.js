@@ -84,6 +84,8 @@ const SHAPES = {
   pack: ['........', '.aa..aa.', '.awaaaw.', '.aaAAaa.', '.aaAAaa.', '.aa..aa.', '.oo..oo.', '..o..o..'],
   legs: ['........', '.aaaaaa.', '.awaaaa.', '.aa..aa.', '.aa..aa.', '.aa..aa.', '.aA..aA.', '........'],
   bucket: ['........', 'A......A', 'aAAAAAAa', 'aoooooow', '.aooooa.', '.aaaaaa.', '..aaaa..', '........'],
+  // Joint : papier clair, bague de la couleur de la variété, bout incandescent.
+  joint: ['......oo', '.....wwo', '....www.', '...waw..', '..waw...', '.www....', 'ww......', 'w.......'],
   hoe: ['...aaaa.', '....hdAa', '...hd..A', '..hd....', '.hd.....', 'hd......', 'd.......', '........'],
   wrench: ['.....a.a', '.....aaa', '....aaa.', '...aa...', '..aa....', '.aa.....', 'aA......', 'A.......'],
   coin: ['........', '..aaaa..', '.awwaaa.', '.awaaAa.', '.aaaaAa.', '.aaAAAa.', '..aaaa..', '........'],

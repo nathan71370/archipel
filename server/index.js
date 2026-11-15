@@ -20,7 +20,39 @@ const DEV = process.argv.includes('--dev');
 const PORT = Number(process.env.PORT) || 5180;
 const BEACON_PORT = 51800;
 const DAY_LENGTH = 720;
-const WORLD_FILE = path.join(ROOT, 'server', 'world.json');
+const WORLD_FILE = path.join(process.env.DATA_DIR || path.join(ROOT, 'server'), 'world.json');
+
+// ---------- Identité ----------
+// Hébergé derrière limperiam-auth (AUTH_INTERNAL_URL définie) : le compte du jeu est le compte SSO.
+// Sans elle (partie entre amis sur le réseau local), chacun choisit son pseudo et tout le monde peut tout.
+const AUTH = !!process.env.AUTH_INTERNAL_URL;
+const APP_SLUG = process.env.AUTH_APP_SLUG?.trim() || 'archipel';
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || null;
+const sso = AUTH ? await import('limperiam-auth-client') : null;
+function cookieOf(req, name) {
+  for (const part of (req.headers.cookie ?? '').split(';')) {
+    const s = part.trim();
+    if (s.startsWith(name + '=')) { try { return decodeURIComponent(s.slice(name.length + 1)); } catch { return null; } }
+  }
+  return null;
+}
+// { status: 'ok', viewer } | { status: 'signedOut' } | { status: 'noAccess', pseudo } | { status: 'unavailable' }
+async function whoIs(req) {
+  if (!AUTH) return { status: 'ok', viewer: null };
+  try {
+    const p = await sso.fetchSession(cookieOf(req, sso.SESSION_COOKIE));
+    if (!p) return { status: 'signedOut' };
+    if (!p.isAdmin && !p.apps.includes(APP_SLUG)) return { status: 'noAccess', pseudo: p.pseudo };
+    return { status: 'ok', viewer: { userId: p.userId, pseudo: p.pseudo, isAdmin: p.isAdmin } };
+  } catch (e) {
+    console.error('[archipel] limperiam-auth injoignable :', e.message);
+    return { status: 'unavailable' }; // on échoue fermé
+  }
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+const notice = (title, body) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} — Archipel</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:ui-rounded,system-ui,sans-serif;background:linear-gradient(180deg,#6fc3ee,#9ad8f5 45%,#fff6e9);color:#fff6e9;text-align:center}
+main{background:rgba(27,22,48,.9);border-radius:18px;padding:32px;max-width:420px}h1{margin:0 0 12px;font-size:1.5rem}p{opacity:.8;line-height:1.5}a,button{display:inline-block;margin-top:12px;padding:10px 18px;border:0;border-radius:12px;background:#e8795a;color:#fff6e9;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}</style></head><body><main>${body}</main></body></html>`;
 const INSTANCE = crypto.randomUUID();
 const NAME = process.env.ARCHIPEL_NAME || os.hostname().replace(/\.local$/, '');
 const LOAD_RADIUS = 6; // tronçons de terrain tenus en mémoire autour de chaque joueur
@@ -186,12 +218,15 @@ function onMessage(ws, raw) {
   try { m = JSON.parse(raw); } catch { return; }
   const me = players.get(ws);
   if (m.t === 'hello' && !me) {
-    const p = { id: nextId++, name: String(m.name || 'Voyageur').slice(0, 16), s: null };
+    // Avec le SSO, le pseudo et l'identité viennent du compte ; sinon du joueur lui-même.
+    const v = ws.viewer;
+    const name = String(v?.pseudo || m.name || 'Voyageur').slice(0, 16);
+    const p = { id: nextId++, name, s: null, key: v ? 'u:' + v.userId : charKey(name), admin: v ? v.isAdmin : true };
     players.set(ws, p);
     ws.send(JSON.stringify({
       t: 'welcome', id: p.id, worldId: meta.id, seed: meta.seed, time: meta.time, edits: editsOut(),
       drops: [...drops.values()], powered: sim.dims.map((D) => [...D.powered]), active: sim.dims.map((D) => [...D.active]),
-      vis: sim.dims.map((D) => [...D.vis]), me: characters[charKey(p.name)] ?? null,
+      vis: sim.dims.map((D) => [...D.vis]), me: characters[p.key] ?? null, name: p.name, admin: p.admin,
       players: [...players.values()].filter((o) => o !== p).map((o) => ({ id: o.id, name: o.name })),
     }));
     broadcast({ t: 'join', id: p.id, name: p.name }, ws);
@@ -261,11 +296,11 @@ function onMessage(ws, raw) {
       break;
     }
     case 'cmd': // commandes qui touchent le monde partagé
-      if (m.c === 'time' && Number.isFinite(m.v) && m.v >= 0 && m.v < 1) { meta.time = m.v; worldDirty = true; broadcast({ t: 'time', v: m.v }); }
+      if (m.c === 'time' && (me.admin || m.sleep === true) && Number.isFinite(m.v) && m.v >= 0 && m.v < 1) { meta.time = m.v; worldDirty = true; broadcast({ t: 'time', v: m.v }); }
       break;
     case 'save': { // le joueur confie son personnage au serveur
       const raw = m.data && typeof m.data === 'object' ? JSON.stringify(m.data) : '';
-      if (raw && raw.length < 30000) { characters[charKey(me.name)] = JSON.parse(raw); worldDirty = true; }
+      if (raw && raw.length < 30000) { characters[me.key] = JSON.parse(raw); worldDirty = true; }
       break;
     }
     case 'tput':
@@ -298,7 +333,7 @@ function lanAddresses() {
   }
   return out;
 }
-try {
+if (!AUTH) try { // hébergé sur Internet : pas d'annonce sur le réseau local
   const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   udp.on('error', (e) => console.warn('Découverte réseau indisponible :', e.message));
   udp.on('message', (buf, rinfo) => {
@@ -337,8 +372,35 @@ if (DEV) {
   const { createServer } = await import('vite');
   vite = await createServer({ root: ROOT, appType: 'spa', server: { middlewareMode: true, hmr: false } });
 }
-server.on('request', (req, res) => {
+server.on('request', async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/api/health') { res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}'); return; }
+  // Tout le reste demande une session quand le SSO est branché.
+  const who = await whoIs(req).catch(() => ({ status: 'unavailable' }));
+  if (who.status !== 'ok') {
+    const api = url.pathname.startsWith('/api/');
+    const origin = PUBLIC_ORIGIN ?? `https://${req.headers.host ?? 'localhost'}`;
+    let login = null;
+    try { login = sso.loginUrl(origin + (api ? '/' : url.pathname)); } catch { /* AUTH_PUBLIC_URL manquante */ }
+    if (who.status === 'signedOut') {
+      if (api || !login) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'non connecté', loginUrl: login })); }
+      else { res.writeHead(302, { Location: login }); res.end(); }
+    } else if (who.status === 'noAccess') {
+      let logout = '';
+      try { logout = `<form method="post" action="${esc(sso.logoutUrl())}"><button>Changer de compte</button></form>`; } catch { /* pas d'URL publique */ }
+      res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(notice('Accès refusé', `<h1>Pas d'accès, ${esc(who.pseudo)}</h1><p>Ton compte n'a pas accès à Archipel. Demande à Nathan d'ouvrir le jeu à ton groupe.</p>${logout}`));
+    } else {
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(notice('Indisponible', '<h1>Connexion indisponible</h1><p>Le service d\'identité ne répond pas. Réessaie dans un instant.</p><a href="">Réessayer</a>'));
+    }
+    return;
+  }
+  if (url.pathname === '/api/me') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(who.viewer ? { auth: true, pseudo: who.viewer.pseudo, admin: who.viewer.isAdmin } : { auth: false }));
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'application/json');
@@ -355,9 +417,13 @@ server.on('request', (req, res) => {
 });
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
-server.on('upgrade', (req, socket, head) => {
+server.on('upgrade', async (req, socket, head) => {
   if (new URL(req.url, 'http://x').pathname !== '/ws') { socket.destroy(); return; }
+  // La connexion de jeu porte l'identité vérifiée au moment où elle s'ouvre.
+  const who = await whoIs(req).catch(() => ({ status: 'unavailable' }));
+  if (who.status !== 'ok') { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
   wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.viewer = who.viewer;
     ws.on('message', (raw) => { try { onMessage(ws, raw); } catch (e) { console.warn('Message ignoré :', e.message); } });
     ws.on('close', () => {
       const p = players.get(ws);

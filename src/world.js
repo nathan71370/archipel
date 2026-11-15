@@ -24,6 +24,9 @@ for (let l = 1; l <= 7; l++) EMIT[70 + l] = 12;
 // Modèles plus hauts que leur bloc : nombre de cases au-dessus par lesquelles on peut aussi les viser.
 const TALL = new Uint8Array(512);
 TALL[B.ROCKET] = 2; TALL[B.LIGHTHOUSE] = 1; TALL[B.TURBINE] = 1;
+// Machines à feu : elles éclairent quand elles tournent.
+const FIRE = new Uint8Array(512);
+for (const id of [B.FURNACE, B.E_FURNACE, B.GENERATOR, B.LAVA_GEN, B.ALLOY, B.FORGE, B.REFINERY]) FIRE[id] = 12;
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 export const CS = 16, WY = 160;
@@ -133,6 +136,7 @@ export class World {
     this._lighting = null;
     this._touched = new Set();
     this.view = VIEW; // rayon réellement affiché (réglage de qualité), au plus VIEW
+    this.active = new Set(); // machines en marche (tenu par la simulation)
     this.vis = new Map(); // état visible des blocs (orientation, raccords des tuyaux…), tenu par la simulation
   }
 
@@ -233,6 +237,7 @@ export class World {
   }
   emitAt(c, i, x, y, z) {
     const id = c.data[i];
+    if (FIRE[id] && this.active.has(posKey(x, y, z))) return FIRE[id];
     return EMIT[id] || (id === B.LAMP && this.powered.has(posKey(x, y, z)) ? 15 : id === B.LIGHTHOUSE && (this.vis.get(posKey(x, y, z)) & 128) ? 15 : 0);
   }
   colTop(x, z) {
@@ -491,7 +496,7 @@ export class World {
     else if (biome === 7) id = y === top ? B.SNOW : y > top - 3 ? B.ICE : B.STONE;
     else id = B.SLATE;
     if (id !== B.STONE && id !== B.SLATE) return id;
-    if (y <= bottom + 1 && hash(x, y, z, s) < (biome === 3 ? 0.14 : 0.04)) return B.CRYSTAL;
+    if (y <= bottom + 1 && hash(x, y, z, s) < (biome === 3 ? 0.08 : 0.04)) return B.CRYSTAL;
     const o = hash(x >> 1, y >> 1, z >> 1, s + 5);
     if (o < 0.026) return B.COAL_ORE;
     if (o < 0.042) return B.COPPER_ORE;
@@ -582,10 +587,10 @@ export class World {
         for (let k = 1; k <= h; k++) put(x, top + k, z, B.LOG, false);
       } else if ((b === 0 && f < 0.013) || (b === 1 && f < 0.046)) {
         put(x, top + 1, z, B.BUSH, true);
-      } else if (b === 3 && f < 0.03) {
+      } else if (b === 3 && f < 0.016) {
+        // Flèche d'ardoise coiffée de cristal : il faut grimper pour une ou deux pièces, pas remplir son sac au sol.
         const h = 2 + Math.floor(v * 6);
-        for (let k = 1; k <= h; k++) put(x, top + k, z, B.CRYSTAL, false);
-        if (h > 4) { put(x + 1, top + 1, z, B.CRYSTAL, true); put(x, top + 1, z + 1, B.CRYSTAL, true); put(x - 1, top + 2, z, B.CRYSTAL, true); }
+        for (let k = 1; k <= h; k++) put(x, top + k, z, k >= h - (h > 5 ? 1 : 0) ? B.CRYSTAL : B.SLATE, false);
       } else if (b === 6 && f < 0.014) {
         const h = 2 + Math.floor(v * 3);
         for (let k = 1; k <= h; k++) put(x, top + k, z, B.CACTUS, false);
@@ -624,7 +629,7 @@ export class World {
   // Place d'un village : puits (ou forge) au centre, maisons autour. Chaque tronçon dessine sa part.
   buildVillage(isl, put) {
     const v = isl.village, K = v.kind, col = {};
-    const wall = K ? B.BASALT : B.PLANKS, post = K ? B.SLATE : B.LOG, roof = K ? B.ASH : B.LEAVES, light = K ? B.EMBER : B.CRYSTAL, floor = K ? B.SLATE : B.PLANKS;
+    const wall = K ? B.BASALT : B.PLANKS, post = K ? B.SLATE : B.LOG, roof = K ? B.ASH : B.LEAVES, light = K ? B.EMBER : B.LANTERN, floor = K ? B.SLATE : B.PLANKS;
     const ground = (x, z) => (this.column(isl, x, z, col) ? col.top : isl.y);
     const gy = ground(v.x, v.z);
     for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
@@ -653,7 +658,8 @@ export class World {
           put(x, y + k, z, id, false);
         }
       }
-      put(hx, y + 3, hz, light, false);
+      // Céliens : une lanterne posée au milieu de la pièce. Cendreux : une braise sous le toit.
+      if (K) put(hx, y + 3, hz, light, false); else put(hx, y + 1, hz, light, false);
       if (idx % 2 === 0) put(hx - (doorX ? Math.sign(doorX) : 1), y + 1, hz - (doorZ ? Math.sign(doorZ) : 1), B.CHEST, false);
       if (idx === 1) put(hx - (doorX ? Math.sign(doorX) : 1), y + 1, hz - (doorZ ? Math.sign(doorZ) : -1), B.BENCH, false);
     });
@@ -796,6 +802,19 @@ export class World {
     for (const c of this.flushLight()) redo.add(c);
     for (const c of redo) c.dirty = true; // redessinés par update(), pas tous d'un coup
     if (redo.size) this.settled = false;
+  }
+
+  // L'ensemble des machines en marche a changé : celles à feu s'allument ou s'éteignent.
+  applyActive(set) {
+    const old = this.active;
+    this.active = set;
+    if (this.headless || old === set) return;
+    const relight = (k) => {
+      const [x, y, z] = k.split(',').map(Number);
+      if (FIRE[this.get(x, y, z)]) this.queueLight(x, z);
+    };
+    for (const k of set) if (!old.has(k)) relight(k);
+    for (const k of old) if (!set.has(k)) relight(k);
   }
 
   // ---------- Rayon (DDA) ----------
