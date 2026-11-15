@@ -121,6 +121,17 @@ function safeSpot(d, x, y, z) {
   return false;
 }
 
+// Tourelles alimentées d'un monde : la liste n'est refaite qu'une fois par seconde, pas à chaque pas.
+const turretCache = [null, null, null];
+function turretsOf(d) {
+  const c = turretCache[d];
+  if (c && tickN - c.at < 20) return c.list;
+  const D = sim.dims[d], list = [];
+  for (const b of D.blocks.values()) if (b.id === B.TURRET && D.powered.has(posKey(b.x, b.y, b.z))) list.push(b);
+  turretCache[d] = { at: tickN, list };
+  return list;
+}
+
 // Boucle du monde : 20 pas par seconde.
 let tickN = 0;
 setInterval(() => {
@@ -139,7 +150,7 @@ setInterval(() => {
       dim: d, night: isNight(),
       players: here.map((p) => ({ id: p.id, pos: { x: p.s[1], y: p.s[2], z: p.s[3] }, alive: p.s[7] !== 0 })),
       safe: (x, y, z) => safeSpot(d, x, y, z),
-      turrets: [...D.blocks.values()].filter((b) => b.id === B.TURRET && D.powered.has(posKey(b.x, b.y, b.z))),
+      turrets: turretsOf(d),
     });
     fluids[d].update(0.05);
   }

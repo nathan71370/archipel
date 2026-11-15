@@ -180,8 +180,12 @@ export class World {
     }
     this.settled = false;
     if (!this.headless) {
-      this.queueLight(x, z);
-      if (mesh) { for (const n of this.flushLight()) if (this.neighboursReady(n) && this.inView(n)) this.mesh(n); this.meshDirtyNear(x, z); }
+      // La lumière n'est à refaire que si le changement la concerne : un bloc plein, une source, un liquide.
+      // Poser une machine, un tuyau ou voir pousser une culture ne la touche pas.
+      if (OPAQUE[old] !== OPAQUE[id] || EMIT[old] !== EMIT[id] || LIQ[old] !== LIQ[id] || old === B.LAMP || id === B.LAMP || old === B.LIGHTHOUSE || id === B.LIGHTHOUSE) this.queueLight(x, z);
+      // Le bloc apparaît tout de suite (son tronçon est redessiné) ; la lumière, plus coûteuse, est refaite
+      // à l'image suivante par update(), qui redessine ensuite ce qu'elle a changé.
+      if (mesh) this.meshDirtyNear(x, z);
     }
     this.onEdit?.(x, y, z, id);
     return true;
@@ -190,9 +194,8 @@ export class World {
   // L'état visible d'un bloc a changé (orientation, raccord, phare allumé) : on redessine autour.
   redraw(x, y, z) {
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const n = this.chunkAt(x + dx, z + dz); if (n) n.dirty = true; }
-    if (this.headless) return;
-    if (this.get(x, y, z) === B.LIGHTHOUSE) { this.queueLight(x, z); this.flushLight(); }
-    this.meshDirtyNear(x, z);
+    this.settled = false; // redessiné au prochain passage de update(), dans son budget de temps
+    if (!this.headless && this.get(x, y, z) === B.LIGHTHOUSE) this.queueLight(x, z);
   }
 
   meshDirtyNear(x, z) {
@@ -700,7 +703,7 @@ export class World {
     return true;
   }
 
-  update(px, pz, budget = 10) {
+  update(px, pz, budget = 7) {
     const cx = Math.floor(px) >> 4, cz = Math.floor(pz) >> 4;
     const ckey = ck(cx, cz);
     if (ckey !== this.center) {
@@ -712,7 +715,7 @@ export class World {
       this.applyView();
     }
     if (this.powerDirty) this.applyPower(this.powered);
-    if (this.lightBoxes.length) this.flushLight();
+    if (this.lightBoxes.length) { this.flushLight(); if (!this.settled) return; } // une image pour la lumière, les suivantes pour redessiner
     if (this.settled) return;
     const t0 = performance.now();
     let pending = false;
@@ -791,7 +794,8 @@ export class World {
       if (old !== set && old.has(e.k) !== on && BLOCKS[e.id].onTile != null) { const c = this.chunkAt(e.x, e.z); if (c) redo.add(c); if (e.id === B.LAMP) this.queueLight(e.x, e.z); }
     }
     for (const c of this.flushLight()) redo.add(c);
-    for (const c of redo) { c.dirty = true; if (this.neighboursReady(c)) this.mesh(c); }
+    for (const c of redo) c.dirty = true; // redessinés par update(), pas tous d'un coup
+    if (redo.size) this.settled = false;
   }
 
   // ---------- Rayon (DDA) ----------

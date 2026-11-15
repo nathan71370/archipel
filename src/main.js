@@ -229,7 +229,8 @@ function startGame({ net = null, welcome = null }) {
     vis: (d, k, v) => { if (d === dim) onVis(k, v); },
     // Une culture pousse (ou meurt) : dans le monde affiché si c'est le nôtre, sinon directement dans ses modifications.
     setBlock: (d, x, y, z, id, meta) => {
-      if (d === dim) { placeMeta = meta ?? null; if (world.setBlock(x, y, z, id)) return; placeMeta = null; }
+      // Sans redessin immédiat : un champ entier peut pousser dans le même pas, le monde redessine ensuite à son rythme.
+      if (d === dim) { placeMeta = meta ?? null; if (world.setBlock(x, y, z, id, false)) return; placeMeta = null; }
       recordEdit(editsByDim[d], x, y, z, id);
       sim.onSet(d, x, y, z, id, meta);
     },
@@ -1163,7 +1164,7 @@ function startGame({ net = null, welcome = null }) {
     net.on('fx', (m) => tracer(new THREE.Vector3(...m.a), new THREE.Vector3(...m.b), 0xff6a6a));
     net.on('set', (m) => {
       applyingRemote = true;
-      if (m.d !== dim || !world.setBlock(m.x, m.y, m.z, m.id)) recordEdit(editsByDim[m.d], m.x, m.y, m.z, m.id);
+      if (m.d !== dim || !world.setBlock(m.x, m.y, m.z, m.id, false)) recordEdit(editsByDim[m.d], m.x, m.y, m.z, m.id);
       applyingRemote = false;
     });
     for (const d of welcome.drops ?? []) drops.spawn(d);
