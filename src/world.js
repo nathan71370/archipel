@@ -19,7 +19,7 @@ for (const id of LIQUID) SEE[id] = 1;
 for (const id of CLEAR) SEE[id] = 1;
 MODEL.forEach((m, id) => { if (m) SEE[id] = 1; }); // un modèle ne remplit pas son cube : il ne cache ni ses voisins ni la lumière
 BLOCKS.forEach((def, id) => { if (def && !SEE[id]) OPAQUE[id] = 1; });
-Object.entries({ [B.CRYSTAL]: 13, [B.EMBER]: 13, [B.LAVA]: 14, [B.CAP]: 11, [B.BEACON]: 14, [B.PORTAL]: 11, [B.URANITE]: 7, [B.ALTAR]: 9, [B.CORE]: 8, [B.LANTERN]: 14 }).forEach(([id, l]) => { EMIT[id] = l; });
+Object.entries({ [B.CRYSTAL]: 13, [B.EMBER]: 13, [B.LAVA]: 14, [B.CAP]: 11, [B.BEACON]: 14, [B.PORTAL]: 11, [B.URANITE]: 7, [B.ALTAR]: 9, [B.CORE]: 8, [B.LANTERN]: 14, [B.TORCH]: 12 }).forEach(([id, l]) => { EMIT[id] = l; });
 for (let l = 1; l <= 7; l++) EMIT[70 + l] = 12;
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 

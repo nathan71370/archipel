@@ -321,13 +321,13 @@ function startGame({ net = null, welcome = null }) {
     ['cnc', 'Usinage', 'Fabrique une fraiseuse CNC.', () => has(B.CNC), 30],
     ['imprimante', 'Atelier complet', 'Fabrique une imprimante 3D.', () => has(B.PRINTER), 40],
     ['tuyaux', 'Tout seul', 'Relie deux machines par un tuyau à objets.', () => has(B.ITEM_PIPE), 30],
-    ['germe', 'Minerai en pot', 'Obtiens un germe pour le cultivateur.', () => [I.SEED_COAL, I.SEED_IRON, I.SEED_COPPER, I.SEED_CRYSTAL, I.SEED_URANITE, I.SEED_EMBER].some((id) => inv.count(id) > 0), 40],
+    ['germe', 'Minerai en pot', 'Obtiens un germe : il se plante en terre labourée, ou va dans un cultivateur.', () => [I.SEED_COAL, I.SEED_IRON, I.SEED_COPPER, I.SEED_CRYSTAL, I.SEED_URANITE, I.SEED_EMBER].some((id) => inv.count(id) > 0), 40],
     ['terminal', 'Grand magasin', 'Fabrique un terminal de stockage.', () => has(B.TERMINAL), 40],
     ['portail', 'Le passage', 'Fabrique un portail.', () => has(B.PORTAL), 50],
     ['braise', 'De l\'autre côté', 'Entre dans la Braise.', () => flags.has('braise'), 50],
     ['uranite', 'Ça brille', "Récolte de l'uranite.", () => inv.count(B.URANITE) > 0, 50],
     ['foreuse', 'Électrique', 'Imprime une foreuse avec des éclats de braise, et charge-la.', () => inv.count(I.DRILL) > 0, 40],
-    ['reacteur', 'Fission', 'Fabrique un cœur de réacteur.', () => has(B.CORE), 80],
+    ['reacteur', 'Fission', 'Fabrique un cœur de réacteur. Le montage est expliqué dans le sac : onglet « Guide des machines ».', () => has(B.CORE), 80],
     ['colosse', 'Tombeur de Colosse', 'Invoque le Colosse de braise avec un appât, et prends son cœur.', () => inv.count(I.HEART) > 0 || has(I.WINGS), 150],
     ['ailes', 'Libre comme l\'air', 'Fabrique les ailes de braise (il te faut un réacteur dorsal).', () => has(I.WINGS), 100],
     ['forge', 'Fusion', 'Fabrique une forge à fusion. Elle réclame 300 W : un réacteur.', () => has(B.FORGE), 100],
@@ -667,11 +667,27 @@ function startGame({ net = null, welcome = null }) {
   const KEYS = { KeyW: 'forward', ArrowUp: 'forward', KeyS: 'back', ArrowDown: 'back', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', ShiftLeft: 'sneak', ShiftRight: 'sneak', ControlLeft: 'run', Space: 'jump' };
   let lastForward = 0, tapRun = false; // deux appuis rapides sur « avancer » : course
 
+  let pausedAt = 0;
   function pause() {
     mode = 'menu';
+    pausedAt = performance.now();
     overlay.classList.remove('hidden');
     for (const k in input) input[k] = false;
     persist();
+  }
+  // Le navigateur refuse de reprendre la souris dans la seconde qui suit un Échap : on réessaie un court moment.
+  let resumedAt = -1e9;
+  function resume() {
+    mode = 'play';
+    resumedAt = performance.now();
+    overlay.classList.add('hidden');
+    let tries = 0;
+    const attempt = () => {
+      if (mode !== 'play' || document.pointerLockElement === canvas) return;
+      const p = canvas.requestPointerLock();
+      if (p?.catch) p.catch(() => { if (++tries < 10 && mode === 'play') setTimeout(attempt, 200); else if (!debugLock && mode === 'play') pause(); });
+    };
+    attempt();
   }
   function lock() {
     mode = 'play';
@@ -898,6 +914,8 @@ function startGame({ net = null, welcome = null }) {
       return;
     }
     if (mode === 'inv' && e.code === 'Escape') { closeInventory(); return; }
+    // Échap ferme aussi la pause (pas dans la même pression que celle qui l'a ouverte).
+    if (mode === 'menu' && e.code === 'Escape' && !e.repeat && performance.now() - pausedAt > 250) { resume(); return; }
     if (mode !== 'play') return;
     if (e.code in KEYS) { input[KEYS[e.code]] = true; e.preventDefault(); }
     if (KEYS[e.code] === 'forward' && !e.repeat) {
@@ -959,8 +977,9 @@ function startGame({ net = null, welcome = null }) {
   }, { passive: true });
 
   document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === canvas) { resumedAt = -1e9; return; } // souris reprise : fin du délai de grâce
     if (document.pointerLockElement !== canvas && mode === 'chat' && !debugLock) { closeChat(); pause(); }
-    else if (document.pointerLockElement !== canvas && mode === 'play' && !debugLock) pause();
+    else if (document.pointerLockElement !== canvas && mode === 'play' && !debugLock && performance.now() - resumedAt > 2500) pause();
   });
   $('play').addEventListener('click', lock);
   $('respawn').addEventListener('click', respawn);
@@ -1100,7 +1119,7 @@ function startGame({ net = null, welcome = null }) {
     const def = BLOCKS[target.id], info = breakInfo(def, held);
     // Une culture ne tient pas sans son bloc de terre : elle part avec lui.
     const above = world.get(target.x, target.y + 1, target.z);
-    if (PASS.has(above)) { world.setBlock(target.x, target.y + 1, target.z, 0); if (!creative) give(...(BLOCKS[above].drop)); }
+    if (PASS.has(above)) { world.setBlock(target.x, target.y + 1, target.z, 0); if (!creative) { give(...(BLOCKS[above].drop ?? [above, 1])); if (BLOCKS[above].seed) give(BLOCKS[above].seed, 1); } }
     world.setBlock(target.x, target.y, target.z, 0);
     if (def.noDrop || creative) { /* réservoir : il tombe de lui-même avec son contenu ; créatif : rien à ramasser */ }
     else if (info.drop) {
@@ -1108,6 +1127,7 @@ function startGame({ net = null, welcome = null }) {
       const ore = ORE_XP[target.id];
       give(id, ore && Math.random() < 0.25 * (held?.e?.fort ?? 0) ? n * 2 : n);
       if (ore) gainXp(ore);
+      if (def.seed) give(def.seed, 1); // le germe revient avec la récolte
       if (target.id === B.CROP3) give(I.SEEDS, 1 + (Math.random() < 0.5 ? 1 : 0));
       if (target.id === B.BUSH && Math.random() < 0.4) give(I.SEEDS, 1);
     } else ui.toast(`Il faut un meilleur outil pour récolter : ${def.name}.`);
@@ -1230,6 +1250,25 @@ function startGame({ net = null, welcome = null }) {
       if (skip) { /* rien : la pose se fait plus bas */ }
       else if (id === B.ALTAR) { input.use = false; openInventory({ altar: true }); return; }
       else if (id === B.PORTAL) { input.use = false; travel(1 - dim); return; }
+      else if (id === B.CASING) {
+        // Un blindage ouvre le cœur du réacteur qu'il protège.
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          if (world.get(x + dx, y + dy, z + dz) !== B.CORE) continue;
+          input.use = false; snd.open(false); openInventory({ tile: tileLink(x + dx, y + dy, z + dz, B.CORE) });
+          return;
+        }
+      }
+      else if (id === B.HAMMOCK) {
+        if (dim !== 0 || !sky.night) ui.toast('On ne dort que la nuit, sous le ciel.');
+        else {
+          if (net) net.send({ t: 'cmd', c: 'time', v: 0.27 }); else sky.time = 0.27;
+          player.hp = Math.min(20, player.hp + 6);
+          fade.classList.add('on'); setTimeout(() => fade.classList.remove('on'), 500);
+          ui.toast('Tu dors jusqu\'au matin.');
+        }
+        useCd = 0.8;
+        return;
+      }
       else if (id === B.BENCH) { input.use = false; snd.open(true); openInventory({ ctx: 'bench' }); return; }
       else if (MACHINES[id]) { input.use = false; snd.open(id === B.CHEST || id === B.DRAWER); openInventory({ tile: tileLink(x, y, z, id) }); return; }
       else if (id === B.TNT) { ignite(x, y, z, 2.2); ui.toast('Mèche allumée, recule !'); useCd = 0.4; return; }
@@ -1287,7 +1326,7 @@ function startGame({ net = null, welcome = null }) {
       return;
     }
     if (it.plant && target) {
-      if (target.id !== B.FARMLAND) { ui.toast("Les graines se sèment sur de la terre labourée (à la houe)."); useCd = 0.5; return; }
+      if (target.id !== B.FARMLAND) { ui.toast("Graines et germes se plantent sur de la terre labourée (à la houe)."); useCd = 0.5; return; }
       if (world.get(target.x, target.y + 1, target.z) || !world.setBlock(target.x, target.y + 1, target.z, it.plant)) return;
       if (!creative && --held.n <= 0) inv.slots[selected] = null;
       snd.place('soft'); swing = 1; dirty = true; useCd = 0.25;
@@ -1298,7 +1337,7 @@ function startGame({ net = null, welcome = null }) {
     const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
     if (world.get(x, y, z) && !LIQUID.has(world.get(x, y, z))) return;
     if (!PASS.has(held.id) && player.intersectsBlock(x, y, z)) return;
-    if (PASS.has(held.id) && world.get(x, y - 1, z) !== B.FARMLAND) { ui.toast('Une culture ne pousse que sur de la terre labourée.'); useCd = 0.5; return; }
+    if (BLOCKS[held.id].crop && world.get(x, y - 1, z) !== B.FARMLAND) { ui.toast('Une culture ne pousse que sur de la terre labourée.'); useCd = 0.5; return; }
     // Une machine se pose face au joueur.
     const model = MODEL[held.id], rot = model && !model.dyn ? ((Math.round((player.yaw - Math.PI) / (Math.PI / 2)) % 4) + 4) % 4 : 0, vk = x + ',' + y + ',' + z;
     if (rot) world.vis.set(vk, rot);

@@ -1,7 +1,7 @@
 // Simulation partagée (navigateur en solo, serveur en multijoueur) :
 // conteneurs, machines, réseau électrique, tuyaux à objets et à fluides.
 // Aucun accès au DOM ni à Three.js.
-import { B, I, ITEMS, ELECTRIC } from './items.js';
+import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW } from './items.js';
 
 const rec = (ins, out, time) => ({ ins, out, time });
 
@@ -70,7 +70,7 @@ export const MACHINES = {
   [B.GENERATOR]: { slots: ['fuel'], gen: 40, hint: 'Brûle du combustible tant que le réseau en a besoin.' },
   [B.LAVA_GEN]: { slots: [], gen: 120, tank: 8000, fluid: B.LAVA, hint: 'Brûle de la lave : un seau donne 120 W pendant une minute. Une pompe posée sur de la lave le nourrit sans fin.' },
   [B.BATTERY]: { slots: [], store: 20000, hint: 'Stocke le surplus et le rend quand la production manque.' },
-  [B.CORE]: { slots: ['rod'], gen: 400, hint: 'Doit être entièrement entouré de blindage (cube de 3×3×3).' },
+  [B.CORE]: { slots: ['rod'], gen: 400, hint: "Le cœur va au centre d'un cube de 3×3×3 : 26 blindages l'entourent de tous côtés, coins compris. Une barre d'uranium y brûle 15 minutes. Le courant sort par un câble collé à un blindage ; un clic droit sur un blindage ouvre le cœur." },
   [B.CONDENSER]: { slots: ['out'], makes: [I.DUST, 1], time: 10, power: 150, hint: "Tire de la poussière d'orage de l'air. Gourmand : 150 W." },
   [B.FORGE]: { slots: ['in', 'in', 'in', 'out'], recipes: FUSE, power: 300, hint: "Fond braise, cristal et uranite en alliage stellaire. Il lui faut 300 W : c'est un travail pour un réacteur." },
   [B.LIGHTHOUSE]: { slots: [], power: 300, beacon: 90, hint: "Donne-lui 300 W sans faiblir pendant une minute et demie pour le rallumer. Une fois allumé, il l'est pour toujours." },
@@ -99,7 +99,7 @@ const DRAW = { [B.LAMP]: 1, [B.FAN]: 5, [B.TURRET]: 5, [B.TNT]: 0 };
 // Câbles, générateurs et machines conduisent ; lampes, ventilateurs, tourelles et poudrières sont en bout de ligne.
 const CONDUCT = new Set([B.CABLE, B.CASING, B.BATTERY, B.TURBINE, B.SOLAR, B.GENERATOR, B.LAVA_GEN, B.CORE,
   B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE]);
-const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, B.CROP1, B.CROP2]);
+const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, ...Object.keys(GROW).map(Number)]);
 
 export const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 export const key = (x, y, z) => x + ',' + y + ',' + z;
@@ -240,7 +240,7 @@ export class Sim {
   // État envoyé à l'interface (le terminal y ajoute l'inventaire du réseau).
   view(d, x, y, z) {
     const t = this.dims[d].tiles.get(key(x, y, z));
-    if (t && t.id === B.TERMINAL) t.items = this.termItems(d, x, y, z);
+    if (t && t.id === B.TERMINAL) { t.items = this.termItems(d, x, y, z); t.stores = this.termStores(d, x, y, z).length; }
     return t ?? null;
   }
 
@@ -468,12 +468,14 @@ export class Sim {
     D.nets = nets;
   }
 
-  coreValid(D, c) {
+  // Nombre de blindages qui manquent autour d'un cœur (0 : le réacteur est complet).
+  coreMissing(D, c) {
+    let n = 0;
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
       if (!dx && !dy && !dz) continue;
-      if (D.blocks.get(key(c.x + dx, c.y + dy, c.z + dz))?.id !== B.CASING) return false;
+      if (D.blocks.get(key(c.x + dx, c.y + dy, c.z + dz))?.id !== B.CASING) n++;
     }
-    return true;
+    return n;
   }
 
   // Calcule production et demande de chaque réseau, fait avancer les machines branchées.
@@ -512,7 +514,8 @@ export class Sim {
           t.out = t.burn > 0 ? GEN[g.id] : 0;
           if (t.out) this._act?.add(g.k);
         } else if (g.id === B.CORE) {
-          const valid = this.coreValid(D, g);
+          const miss = this.coreMissing(D, g), valid = miss === 0;
+          t.miss = miss;
           if (t.burn <= 0 && valid && t.slots[0]?.id === I.ROD && dt > 0) {
             t.burn = t.burnMax = ROD_LIFE;
             if (--t.slots[0].n <= 0) t.slots[0] = null;
@@ -715,9 +718,10 @@ export class Sim {
   grow(d) {
     const D = this.dims[d];
     for (const b of [...D.blocks.values()]) {
-      if (b.id !== B.CROP1 && b.id !== B.CROP2) continue;
-      if (D.blocks.get(key(b.x, b.y - 1, b.z))?.id !== B.FARMLAND) { this.hooks.setBlock?.(d, b.x, b.y, b.z, 0); this.hooks.drop(d, b.x, b.y, b.z, { id: I.SEEDS, n: 1 }); }
-      else if (Math.random() < 1 / 40) this.hooks.setBlock?.(d, b.x, b.y, b.z, b.id + 1);
+      const g = GROW[b.id];
+      if (!g) continue;
+      if (D.blocks.get(key(b.x, b.y - 1, b.z))?.id !== B.FARMLAND) { const [id, n] = BLOCKS[b.id].drop; this.hooks.setBlock?.(d, b.x, b.y, b.z, 0); this.hooks.drop(d, b.x, b.y, b.z, { id, n }); }
+      else if (Math.random() < 1 / g[1]) this.hooks.setBlock?.(d, b.x, b.y, b.z, g[0]);
     }
   }
 }

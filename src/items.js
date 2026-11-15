@@ -12,6 +12,8 @@ export const B = {
   LAVA_GEN: 56, DRAWER: 57, TERMINAL: 58, ALTAR: 59,
   SAND: 80, SANDSTONE: 81, CACTUS: 82, ICE: 83, PINE_LEAVES: 84, STONE_BRICK: 85, GLASS: 86, LANTERN: 87,
   FORGE: 88, CONDENSER: 89, LIGHTHOUSE: 90, FARMLAND: 91, CROP1: 92, CROP2: 93, CROP3: 94,
+  TORCH: 95, HAMMOCK: 96, BOUNCE: 97,
+  ORE_CROP: 210, // 210 à 221 : pousse puis plant mûr de chacun des six germes de minerai
 };
 // Blocs pleins mais qui laissent passer la vue et la lumière.
 export const CLEAR = new Set([86]);
@@ -30,7 +32,7 @@ export const I = {
   SEED_COAL: 183, SEED_IRON: 184, SEED_COPPER: 185, SEED_CRYSTAL: 186, SEED_URANITE: 187, SEED_EMBER: 188,
   CHITIN: 189, FROST: 190, BAIT: 191, HEART: 192, WINGS: 193, COMPASS: 194,
   CHITIN_HELM: 195, CHITIN_CHEST: 196, CHITIN_LEGS: 197, CHITIN_BOOTS: 198,
-  STAR: 199, SEEDS: 200, WHEAT: 201, BREAD: 202, PIE: 203, HOE: 204,
+  STAR: 199, SEEDS: 200, WHEAT: 201, BREAD: 202, PIE: 203, HOE: 204, JELLY: 205, SOUP: 206,
 };
 
 // hard = secondes à mains nues ; tool = outil adapté ; tier = palier minimal pour récolter.
@@ -115,15 +117,33 @@ BLOCKS[B.CONDENSER] = blk("Condenseur d'orage", T.MACHINE, T.CONDENSER, T.MACHIN
 BLOCKS[B.LIGHTHOUSE] = blk("Phare de l'Archipel", T.M_GOLD, T.M_WHITE, T.M_DARK, 3, 'pick');
 BLOCKS[B.FARMLAND] = blk('Terre labourée', T.FARMLAND, T.DIRT, T.DIRT, 0.6, 'shovel', 0, { drop: [B.DIRT, 1] });
 // Blé céleste : trois stades. Seul le dernier donne du blé.
-BLOCKS[B.CROP1] = all('Pousse de blé', T.CROP, 0.1, null, 0, { drop: [I.SEEDS, 1], pass: true, icon: T.CROP });
-BLOCKS[B.CROP2] = all('Blé en herbe', T.CROP, 0.1, null, 0, { drop: [I.SEEDS, 1], pass: true, icon: T.CROP });
-BLOCKS[B.CROP3] = all('Blé mûr', T.CROP_RIPE, 0.1, null, 0, { drop: [I.WHEAT, 2], pass: true, icon: T.CROP_RIPE });
+BLOCKS[B.CROP1] = all('Pousse de blé', T.CROP, 0.1, null, 0, { drop: [I.SEEDS, 1], pass: true, crop: true, hidden: true });
+BLOCKS[B.CROP2] = all('Blé en herbe', T.CROP, 0.1, null, 0, { drop: [I.SEEDS, 1], pass: true, crop: true, hidden: true });
+BLOCKS[B.CROP3] = all('Blé mûr', T.CROP_RIPE, 0.1, null, 0, { drop: [I.WHEAT, 2], pass: true, crop: true, hidden: true });
+BLOCKS[B.TORCH] = all('Torche', T.M_HOT, 0.1, null, 0, { pass: true });
+BLOCKS[B.HAMMOCK] = all('Hamac', T.M_RED, 0.8, 'axe');
+BLOCKS[B.BOUNCE] = all('Gelée bondissante', T.JELLY, 0.6);
+// Germes de minerai plantés en terre : [germe, nom, tuile du minerai, récolte, secondes en moyenne pour mûrir].
+// Plus lent que le cultivateur, mais sans eau ni courant. Le germe revient à la récolte.
+export const ORE_CROPS = [
+  [I.SEED_COAL, 'charbon', T.COAL_ORE, [I.COAL, 2], 90], [I.SEED_IRON, 'fer', T.IRON_ORE, [B.IRON_ORE, 1], 100],
+  [I.SEED_COPPER, 'cuivre', T.COPPER_ORE, [B.COPPER_ORE, 1], 100], [I.SEED_CRYSTAL, 'cristal', T.CRYSTAL, [B.CRYSTAL, 1], 150],
+  [I.SEED_URANITE, 'uranite', T.URANITE, [B.URANITE, 1], 220], [I.SEED_EMBER, 'braise', T.EMBER, [I.EMBER_SHARD, 1], 220],
+];
+ORE_CROPS.forEach(([seed, name, tile, out], k) => {
+  BLOCKS[B.ORE_CROP + k * 2] = all(`Pousse de ${name}`, T.CROP, 0.1, null, 0, { drop: [seed, 1], pass: true, crop: true, hidden: true });
+  BLOCKS[B.ORE_CROP + k * 2 + 1] = all(`Plant de ${name} mûr`, tile, 0.1, null, 0, { drop: out, seed, pass: true, crop: true, hidden: true });
+});
+// Ce qui pousse tout seul sur de la terre labourée : bloc -> [stade suivant, secondes en moyenne].
+export const GROW = { [B.CROP1]: [B.CROP2, 40], [B.CROP2]: [B.CROP3, 40] };
+ORE_CROPS.forEach((c, k) => { GROW[B.ORE_CROP + k * 2] = [B.ORE_CROP + k * 2 + 1, c[4]]; });
 
 export const ELECTRIC = new Set([B.CABLE, B.TURBINE, B.LAMP, B.FAN, B.TURRET, B.TNT,
   B.E_FURNACE, B.GENERATOR, B.SOLAR, B.BATTERY, B.CNC, B.PRINTER, B.CHARGER, B.CORE, B.CASING,
   B.PUMP, B.STONER, B.GROWER, B.WASHER, B.LAVA_GEN, B.FORGE, B.CONDENSER, B.LIGHTHOUSE]);
-// Blocs qu'on traverse en marchant (cultures).
-export const PASS = new Set([B.CROP1, B.CROP2, B.CROP3]);
+// Blocs qu'on traverse en marchant (cultures, torches).
+export const PASS = new Set();
+BLOCKS.forEach((def, id) => { if (def?.pass) PASS.add(id); });
 
 // ---------- Paliers d'outils ----------
 export const TIERS = [
@@ -154,7 +174,7 @@ export const armorId = (ti, slot) => (slot === 2 ? 180 + ti : 130 + ti * 3 + (sl
 
 // ---------- Table de tous les objets ----------
 export const ITEMS = {};
-BLOCKS.forEach((def, id) => { if (def) ITEMS[id] = { name: def.name, block: true, tile: def.icon ?? def.side, stack: 99, legacy: def.legacy }; });
+BLOCKS.forEach((def, id) => { if (def) ITEMS[id] = { name: def.name, block: true, tile: def.icon ?? def.side, stack: 99, legacy: def.legacy || def.hidden }; });
 TIERS.forEach((tier, ti) => TOOLS.forEach((tool, k) => {
   ITEMS[toolId(ti, k)] = {
     name: `${tool.name} ${tier.name}`, shape: tool.shape, color: tier.color, stack: 1,
@@ -196,12 +216,12 @@ Object.assign(ITEMS, {
   [I.COIN]: { name: 'Écu céleste', shape: 'coin', color: 0xf4c95d, stack: 99 },
   [I.IRON_DUST]: { name: 'Poudre de fer', shape: 'dustp', color: 0xe2b193, stack: 99 },
   [I.COPPER_DUST]: { name: 'Poudre de cuivre', shape: 'dustp', color: 0xe0822f, stack: 99 },
-  [I.SEED_COAL]: { name: 'Germe de charbon', shape: 'seed', color: 0x4a4458, stack: 16 },
-  [I.SEED_IRON]: { name: 'Germe de fer', shape: 'seed', color: 0xe2b193, stack: 16 },
-  [I.SEED_COPPER]: { name: 'Germe de cuivre', shape: 'seed', color: 0xe0822f, stack: 16 },
-  [I.SEED_CRYSTAL]: { name: 'Germe de cristal', shape: 'seed', color: 0x5fdcf5, stack: 16 },
-  [I.SEED_URANITE]: { name: "Germe d'uranite", shape: 'seed', color: 0x9dff5a, stack: 16 },
-  [I.SEED_EMBER]: { name: 'Germe de braise', shape: 'seed', color: 0xff7a3d, stack: 16 },
+  [I.SEED_COAL]: { name: 'Germe de charbon', shape: 'seed', color: 0x4a4458, stack: 16, plant: 210 },
+  [I.SEED_IRON]: { name: 'Germe de fer', shape: 'seed', color: 0xe2b193, stack: 16, plant: 212 },
+  [I.SEED_COPPER]: { name: 'Germe de cuivre', shape: 'seed', color: 0xe0822f, stack: 16, plant: 214 },
+  [I.SEED_CRYSTAL]: { name: 'Germe de cristal', shape: 'seed', color: 0x5fdcf5, stack: 16, plant: 216 },
+  [I.SEED_URANITE]: { name: "Germe d'uranite", shape: 'seed', color: 0x9dff5a, stack: 16, plant: 218 },
+  [I.SEED_EMBER]: { name: 'Germe de braise', shape: 'seed', color: 0xff7a3d, stack: 16, plant: 220 },
   [I.CHITIN]: { name: 'Chitine', shape: 'plate', color: 0x2f8f8a, stack: 99 },
   [I.FROST]: { name: 'Éclat de givre', shape: 'lump', color: 0xbfe9fa, stack: 99 },
   [I.BAIT]: { name: 'Appât du Colosse', shape: 'lump', color: 0xff3d6a, stack: 16 },
@@ -217,6 +237,8 @@ Object.assign(ITEMS, {
   [I.WHEAT]: { name: 'Blé céleste', shape: 'feather', color: 0xf0c94a, stack: 99 },
   [I.BREAD]: { name: 'Pain', shape: 'ingot', color: 0xc98a4a, stack: 99, food: 6 },
   [I.PIE]: { name: 'Tourte du voyageur', shape: 'coin', color: 0xd9a35f, stack: 99, food: 13 },
+  [I.JELLY]: { name: 'Gelée lumineuse', shape: 'lump', color: 0x7dffb0, stack: 99, food: 3 },
+  [I.SOUP]: { name: 'Soupe de champignons', shape: 'bucket', color: 0xb98a5a, stack: 16, food: 9 },
   [I.HOE]: { name: 'Houe', shape: 'hoe', color: 0xdfe3ea, stack: 1 },
   [I.JETPACK]: { name: 'Réacteur dorsal', shape: 'pack', color: 0x8d94a8, stack: 1, charge: { max: 600, use: 20 }, armor: { slot: 1, points: 2 } },
 });
@@ -261,6 +283,9 @@ R('Bases', B.BENCH, 1, [[B.PLANKS, 4]]);
 R('Bases', B.FURNACE, 1, [[B.STONE, 8]], 'bench');
 R('Bases', I.HOE, 1, [[I.IRON, 2], [I.STICK, 2]], 'bench');
 R('Bases', I.BREAD, 1, [[I.WHEAT, 3]]);
+R('Bases', I.SOUP, 1, [[I.MUSHROOM, 3]]);
+R('Bases', B.TORCH, 4, [[I.STICK, 1], [I.COAL, 1]]);
+R('Bases', B.TORCH, 4, [[I.STICK, 1], [I.JELLY, 1]]);
 R('Bases', I.PIE, 1, [[I.WHEAT, 2], [I.MEAT_COOKED, 1], [I.BERRIES, 2]], 'bench');
 TIERS.forEach((tier, ti) => TOOLS.forEach((tool, k) => R('Outils', toolId(ti, k), 1, [[tier.mat, tool.n], [I.STICK, tool.sticks]], 'bench')));
 ARMOR_TIERS.forEach((at, ti) => ARMOR.forEach((a, k) => R('Armures', armorId(ti, k), 1, [[TIERS[at.tier].mat, a.n]], 'bench')));
@@ -309,6 +334,8 @@ R('Combat', I.GUN, 1, [[I.IRON, 5], [I.COPPER, 2], [B.CRYSTAL, 2], [B.PLANKS, 2]
 R('Combat', I.AMMO, 6, [[I.COPPER, 1], [I.COAL, 1]], 'bench');
 R('Combat', I.AMMO, 12, [[I.COPPER, 1], [I.DUST, 1]], 'bench');
 R('Combat', B.TNT, 2, [[I.DUST, 2], [I.COAL, 2], [B.PLANKS, 1]], 'bench');
+R('Exploration', B.HAMMOCK, 1, [[B.PLANKS, 3], [I.FEATHER, 4], [I.STICK, 2]], 'bench');
+R('Construction', B.BOUNCE, 1, [[I.JELLY, 4]], 'bench');
 R('Exploration', I.HOOK, 1, [[I.IRON, 3], [I.STICK, 4]], 'bench');
 R('Exploration', B.BEACON, 1, [[B.PLANKS, 3], [I.FEATHER, 2], [B.CRYSTAL, 1]], 'bench');
 R('Exploration', B.PORTAL, 1, [[B.SLATE, 4], [B.CRYSTAL, 4], [I.DUST, 2]], 'bench');

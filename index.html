@@ -177,6 +177,8 @@
   #cursor .n { position:absolute; right:-4px; bottom:-6px; font-size:12px; font-weight:800; text-shadow:0 1px 0 #000,0 0 3px #000; }
   .tip { margin-top:10px; font-size:11px; opacity:.6; }
   .recipe.info { cursor:default; } .recipe.info:hover { background:none; }
+  .note { display:flex; gap:9px; padding:4px 8px 6px; font-size:12px; line-height:1.4; } .note img { width:26px; height:26px; flex:none; image-rendering:pixelated; }
+  .note p { margin:0 0 4px; opacity:.9; }
   .palette { display:flex; flex-wrap:wrap; gap:3px; }
   .palette .slot { width:40px; height:40px; border-radius:7px; cursor:pointer; } .palette .slot:hover { border-color:rgba(255,246,233,.5); }
   .palette .slot img { width:28px; height:28px; }
@@ -255,6 +257,7 @@
       <kbd>Clic gauche</kbd><span>Miner (maintenir), frapper, tirer</span>
       <kbd>Clic droit</kbd><span>Poser, manger, utiliser, lancer le grappin</span>
       <kbd>E</kbd><span>Sac et fabrication</span>
+      <kbd>Échap</kbd><span>Pause, et retour au jeu</span>
       <kbd>J</kbd><span>Journal des objectifs</span>
       <kbd>T</kbd><span>Chat et commandes (/aide, /gamemode creative…)</span>
       <kbd>A</kbd><span>Jeter l'objet tenu (Ctrl + A : toute la pile)</span>

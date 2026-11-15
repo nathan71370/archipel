@@ -231,6 +231,22 @@ def(B.CROP3, [
   [2, -1, 4.5, 14, 9, 5.5, T.CROP], [2, -1, 10.5, 14, 9, 11.5, T.CROP], [4.5, -1, 2, 5.5, 9, 14, T.CROP], [10.5, -1, 2, 11.5, 9, 14, T.CROP],
   [2, 9, 4, 14, 14, 6, T.CROP_RIPE], [2, 9, 10, 14, 14, 12, T.CROP_RIPE], [4, 9, 2, 6, 14, 14, T.CROP_RIPE], [10, 9, 2, 12, 14, 14, T.CROP_RIPE],
 ]);
+import { ORE_CROPS } from './items.js';
+def(B.TORCH, [[7, 0, 7, 9, 10, 9, T.LOG_SIDE], [6.5, 10, 6.5, 9.5, 13, 9.5, T.M_HOT, 1]]);
+def(B.HAMMOCK, [
+  [1, 0, 7, 3, 12, 9, T.LOG_SIDE], [13, 0, 7, 15, 12, 9, T.LOG_SIDE],
+  [0, 0, 6, 4, 1, 10, T.LOG_SIDE], [12, 0, 6, 16, 1, 10, T.LOG_SIDE],
+  [3, 6, 4, 13, 7, 12, T.M_RED], [3, 7, 4, 4, 9, 12, T.M_RED], [12, 7, 4, 13, 9, 12, T.M_RED],
+  [4.5, 7, 5.5, 7, 8, 10.5, T.M_WHITE],
+]);
+ORE_CROPS.forEach(([, , tile], k) => {
+  const glow = tile === T.CRYSTAL || tile === T.EMBER || tile === T.URANITE ? 1 : 0;
+  def(B.ORE_CROP + k * 2, [[7, -1, 7, 9, 5, 9, T.CROP], [5, 2, 7.5, 11, 3, 8.5, T.CROP], [6.5, 5, 6.5, 9.5, 7, 9.5, tile, glow]]);
+  def(B.ORE_CROP + k * 2 + 1, [
+    [7, -1, 7, 9, 10, 9, T.CROP], [3, 4, 7.5, 13, 5, 8.5, T.CROP], [7.5, 7, 3, 8.5, 8, 13, T.CROP],
+    [5.5, 10, 5.5, 10.5, 15, 10.5, tile, glow], [1.5, 5, 6, 5.5, 9, 10, tile, glow], [10.5, 5, 6, 14.5, 9, 10, tile, glow], [6, 8, 1.5, 10, 12, 5.5, tile, glow],
+  ]);
+});
 
 // Câbles et tuyaux : un nœud central, et un bras vers chaque voisin auquel ils se raccordent.
 // décor : 2 bits par côté, pour les bras qui vont vers une machine —

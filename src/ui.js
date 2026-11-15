@@ -17,6 +17,28 @@ const PALETTE = Object.keys(ITEMS).map(Number).filter((id) => !ITEMS[id].legacy 
   return { id, fam, text: norm(it.name) };
 });
 const FAMS = ['Blocs', 'Machines', 'Outils', 'Armures', 'Nourriture', 'Objets'];
+// Notices : les montages qui ne se devinent pas. Affichées dans le guide, trouvées par la recherche.
+const NOTES = [
+  { title: 'Réacteur nucléaire (400 W)', icon: B.CORE, find: 'reacteur nucleaire coeur blindage uranium barre fission', steps: [
+    "1. Fabrique 1 cœur de réacteur et 26 blindages (la recette en donne 2 à la fois).",
+    "2. Pose le cœur au centre d'un cube de 3×3×3 : les 26 blindages le recouvrent entièrement, coins compris.",
+    "3. Imprime des barres d'uranium à l'imprimante 3D : 2 uranites (dans la Braise) + 1 plaque.",
+    "4. Clic droit sur n'importe quel blindage pour ouvrir le cœur, et dépose une barre : elle brûle 15 minutes.",
+    "5. Colle un câble contre un blindage : le courant sort par là.",
+    "Attention : si un blindage disparaît pendant qu'une barre brûle, le cœur fond et explose en 10 secondes.",
+  ] },
+  { title: 'Germes de minerai', icon: 184, find: 'germe minerai planter cultivateur graine pousse', steps: [
+    "Un germe s'obtient à l'imprimante 3D (8 minerais + 1 circuit) ou auprès des villageois.",
+    "Planté sur de la terre labourée à la houe, il pousse seul en quelques minutes. À la récolte, le germe revient.",
+    "Dans un cultivateur de minerai (eau + courant), il pousse bien plus vite et se récolte par tuyau.",
+  ] },
+  { title: 'Tuyaux et clé à molette', icon: 176, find: 'tuyau cle molette raccord tirer pousser debrancher cable', steps: [
+    "Un tuyau se raccorde tout seul aux machines et aux autres tuyaux qu'il touche.",
+    "Clé en main, clic droit sur un raccord : automatique (bague grise) → tire (pointe bleue) → pousse (pointe orange) → débranché.",
+    "Un coffre, un tiroir ou un réservoir ne se vide que par un raccord réglé sur « tire ».",
+    "Sur un câble, la clé branche ou débranche un côté. Sur une machine, elle la fait pivoter.",
+  ] },
+];
 export const enchantText = (s) => (s.e ? Object.entries(s.e).map(([k, l]) => `${ENCHANTS[k].name} ${'I'.repeat(l)}`).join(', ') : '');
 
 export class UI {
@@ -354,7 +376,7 @@ export class UI {
     let html = '';
     if (def.terminal) {
       const items = st.items ?? [];
-      html = `<div class="term" data-g="put">${items.map(([id, n]) => `<div class="slot" data-g="${id}" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt=""><span class="n">${n > 999 ? (n / 1000).toFixed(1) + 'k' : n}</span></div>`).join('') || '<div class="muted">Aucun coffre ni tiroir relié : colle un tuyau à objets au terminal et à tes rangements.</div>'}</div>`
+      html = `<div class="term" data-g="put">${items.map(([id, n]) => `<div class="slot" data-g="${id}" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt=""><span class="n">${n > 999 ? (n / 1000).toFixed(1) + 'k' : n}</span></div>`).join('') || `<div class="muted">${st.stores ? `${st.stores} rangement${st.stores > 1 ? 's' : ''} relié${st.stores > 1 ? 's' : ''}, encore vide${st.stores > 1 ? 's' : ''}. Maj + clic dans le sac pour y ranger un objet.` : 'Aucun coffre ni tiroir relié : colle un tuyau à objets au terminal et à tes rangements.'}</div>`}</div>`
         + `<div class="tinfo">${items.length} types d'objets · ${fmt(items.reduce((t, i) => t + i[1], 0))} objets. Clic : prendre une pile · Clic droit : un seul · Maj + clic dans le sac : ranger.</div>`;
     } else if (tile.id === B.CHEST) {
       for (let row = 0; row < 3; row++) {
@@ -380,7 +402,8 @@ export class UI {
       if (ch) html += this.bar(`Charge de l'objet : ${Math.round(((s0.c ?? 0) / ch.max) * 100)} %`, (s0.c ?? 0) / ch.max, 'elec');
       const lines = [];
       if (GEN[tile.id]) lines.push(`Production : <b>${st.out ?? 0} W</b> (maximum ${GEN[tile.id]} W)`);
-      if (tile.id === B.CORE) lines.push(st.valid ? 'Blindage complet.' : '<span class="warn">Blindage incomplet : le cœur ne démarre pas.</span>');
+      if (tile.id === B.CORE) lines.push(st.valid ? 'Blindage complet (26 sur 26).' : `<span class="warn">Blindage incomplet : il manque ${st.miss ?? 26} bloc${(st.miss ?? 26) > 1 ? 's' : ''} sur 26. Le cœur ne démarre pas.</span>`);
+      if (tile.id === B.CORE && !st.slots[0] && !(st.burn > 0)) lines.push("Pas de barre d'uranium : l'imprimante 3D en fait une avec 2 uranites et 1 plaque.");
       if (tile.id === B.CORE && st.burn > 0 && !st.valid) lines.push('<span class="warn">FUSION IMMINENTE : répare le blindage !</span>');
       if (def.pump) lines.push(st.src ? `Source : ${FLUID_NAME[st.src].toLowerCase()}, inépuisable.` : "<span class=\"warn\">Aucun liquide dessous : repose-la au-dessus d'eau ou de lave.</span>");
       if (def.fluidUse) lines.push(`Consomme ${def.fluidUse} L par opération.`);
@@ -485,6 +508,12 @@ export class UI {
       const ings = g.ins.map(([id, n]) => `<span class="ing" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt="">${n}</span>`).join('') || '<span class="ing">rien</span>';
       html += `<div class="recipe info"><img src="${this.icons[g.out[0]].url}" alt=""><div class="rname">${ITEMS[g.out[0]].name}${g.out[1] > 1 ? ' ×' + g.out[1] : ''}<small>${g.time} s${g.keep ? ' · le germe reste' : ''}</small></div><div class="ings">${ings}</div></div>`;
     }
+    let notes = '';
+    for (const n of NOTES) {
+      if (q ? !words.every((w) => n.find.includes(w) || norm(n.title).includes(w)) : this.cat !== 'guide') continue;
+      notes += `<h3>${n.title}<span>notice</span></h3><div class="note"><img src="${this.icons[n.icon].url}" alt=""><div>${n.steps.map((t) => `<p>${t}</p>`).join('')}</div></div>`;
+    }
+    html = q ? html + notes : notes + html; // dans l'onglet du guide, les notices d'abord
     if (!html) html = `<div class="muted">${q ? 'Aucune recette ne correspond à cette recherche.' : this.cat === 'ok' ? "Rien de faisable avec ce que tu as dans le sac pour l'instant." : 'Aucune recette ici.'}</div>`;
     const scroll = this.el.recipes.scrollTop;
     this.el.recipes.innerHTML = html;

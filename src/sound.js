@@ -107,8 +107,11 @@ export class Sound {
       f.connect(g); lfo(0.13, 160, f.frequency);
       loop.max = 0.22; loop.filter = f;
     } else if (name === 'rain') {
-      noise('highpass', 2400, 0.4).connect(g);
-      loop.max = 0.07;
+      // Pluie : un fond grave et discret, pas un sifflement.
+      const f = noise('bandpass', 1100, 0.35), lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 2600;
+      f.connect(lp).connect(g);
+      loop.max = 0.022;
     } else if (name === 'fire') {
       const f = noise('bandpass', 620, 0.5), a = ctx.createGain();
       a.gain.value = 0.6;

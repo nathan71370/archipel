@@ -186,7 +186,11 @@ export class Player {
       if (input.jump && this.onGround) { v.y = JUMP; this.onGround = false; }
     }
 
-    const impact = moveBody(this.world, this, dt);
+    let impact = moveBody(this.world, this, dt);
+    // Gelée bondissante : elle renvoie en l'air, sans dégât de chute. Accroupi, on s'y pose.
+    if (this.onGround && impact > 4 && !input.sneak && this.world.get(Math.floor(p.x), Math.floor(p.y - 0.5), Math.floor(p.z)) === 97) {
+      v.y = Math.min(24, impact * 0.85); this.onGround = false; impact = 0;
+    }
     if (this.onGround) {
       this.gliding = false;
       this.safeTimer -= dt;

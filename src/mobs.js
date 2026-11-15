@@ -99,9 +99,8 @@ function buildRodeur(BODY = 0x3b3550, DARK = 0x2a2540, EYE = 0x7ef0ff) {
 }
 
 // Colosse de basalte fissuré de braise, avec des cornes.
-function buildBrandon() {
+function buildBrandon(ROCK = 0x2b2730, DARK = 0x1a171d, HOT = 0xff6a1f, EYE = 0xffd27a) {
   const g = new THREE.Group(), limbs = [];
-  const ROCK = 0x2b2730, DARK = 0x1a171d, HOT = 0xff6a1f, EYE = 0xffd27a;
   for (const s of [-1, 1]) {
     const leg = part(g, 0.28, 0.84, 0.3, DARK, s * 0.18, 0.84, 0, { hinge: true });
     part(leg, 0.3, 0.07, 0.07, HOT, 0, -0.4, -0.15, { glow: true });
@@ -165,6 +164,52 @@ function buildScarab() {
   }
   return { group: g, limbs, head };
 }
+// Gelée : un cube translucide qui se tasse en sautillant, deux yeux, un noyau lumineux.
+function buildGelee() {
+  const g = new THREE.Group();
+  const body = sub(g, 0, 0, 0);
+  const shell = part(body, 0.8, 0.66, 0.8, 0x5fe39a, 0, 0.33, 0);
+  shell.material.transparent = true; shell.material.opacity = 0.72;
+  part(body, 0.36, 0.3, 0.36, 0xd9ffe9, 0, 0.3, 0, { glow: true });
+  for (const s of [-1, 1]) part(body, 0.12, 0.14, 0.04, 0x1b1630, s * 0.17, 0.42, -0.41);
+  return { group: g, limbs: [], head: null, tick: (m) => { const q = Math.sin(m.phase * 1.4) * 0.12; body.scale.set(1 - q * 0.6, 1 + q, 1 - q * 0.6); } };
+}
+// Cracheur : lézard bas des dunes, collerette, poche à venin lumineuse sous la gorge.
+function buildCracheur() {
+  const g = new THREE.Group(), limbs = [];
+  const SAND = 0xc9a25f, DARK = 0x8a6a3a, SAC = 0xb6ff5a;
+  part(g, 0.5, 0.34, 1.0, SAND, 0, 0.42, 0.1);
+  part(g, 0.3, 0.2, 0.6, DARK, 0, 0.36, 0.86, { rot: [-0.2, 0, 0] }); // queue
+  for (const z of [-0.2, 0.2, 0.5]) part(g, 0.1, 0.16, 0.14, DARK, 0, 0.64, z);
+  const head = sub(g, 0, 0.56, -0.48);
+  part(head, 0.42, 0.32, 0.44, SAND, 0, 0.06, -0.12);
+  part(head, 0.7, 0.5, 0.06, 0xe8795a, 0, 0.12, 0.08); // collerette
+  part(head, 0.26, 0.2, 0.26, SAC, 0, -0.18, -0.1, { glow: true });
+  for (const s of [-1, 1]) part(head, 0.08, 0.1, 0.05, 0x1b1630, s * 0.16, 0.14, -0.33);
+  for (const [x, z] of [[-0.3, -0.2], [0.3, -0.2], [-0.3, 0.42], [0.3, 0.42]]) limbs.push(part(g, 0.14, 0.3, 0.16, DARK, x, 0.3, z, { hinge: true }));
+  return { group: g, limbs, head };
+}
+// Planeuse : une raie du ciel, deux grandes ailes souples, longue queue.
+function buildPlaneuse() {
+  const g = new THREE.Group();
+  const SKIN = 0xbfe0ff, BELLY = 0xf6fbff, DARK = 0x6a8fc8;
+  part(g, 0.6, 0.18, 1.0, SKIN, 0, 0.2, 0);
+  part(g, 0.4, 0.06, 0.8, BELLY, 0, 0.1, 0);
+  part(g, 0.08, 0.06, 1.1, DARK, 0, 0.2, 0.95); // queue
+  for (const s of [-1, 1]) part(g, 0.08, 0.06, 0.04, 0x1b1630, s * 0.16, 0.26, -0.5);
+  const wings = [-1, 1].map((s) => {
+    const w = sub(g, s * 0.3, 0.22, 0);
+    part(w, 0.9, 0.07, 0.8, SKIN, s * 0.45, 0, 0.02);
+    part(w, 0.5, 0.05, 0.5, DARK, s * 1.05, 0, 0.1);
+    return w;
+  });
+  return { group: g, limbs: [], head: null, tick: (m) => { const a = Math.sin(m.phase * 0.9) * 0.45; wings[0].rotation.z = -a; wings[1].rotation.z = a; } };
+}
+function buildGolem() {
+  const m = buildBrandon(0x6a6470, 0x45404c, 0xffb347, 0xfff1a8);
+  m.group.scale.setScalar(1.25);
+  return m;
+}
 function buildColosse() {
   const m = buildBrandon();
   m.group.scale.setScalar(2);
@@ -172,8 +217,8 @@ function buildColosse() {
 }
 
 const BUILD = {
-  nuaki: buildNuaki, picore: buildPicore, rodeur: () => buildRodeur(), brandon: buildBrandon,
-  scarab: buildScarab, colosse: buildColosse, givrelin: () => buildRodeur(0xbfe6f5, 0x7fb4d6, 0xffffff),
+  nuaki: buildNuaki, picore: buildPicore, rodeur: () => buildRodeur(), brandon: () => buildBrandon(),
+  scarab: buildScarab, colosse: buildColosse, gelee: buildGelee, cracheur: buildCracheur, planeuse: buildPlaneuse, golem: buildGolem, givrelin: () => buildRodeur(0xbfe6f5, 0x7fb4d6, 0xffffff),
   celien: (job) => buildVillager(JOB_COLORS[job][0], JOB_COLORS[job][1], 0xf3d9c4, 0xe9b58f),
   cendreux: (job) => buildVillager(0x3a2a2e, JOB_COLORS[job][1], 0x8f2b22, 0x9a8f96),
 };
@@ -254,6 +299,7 @@ export class MobView {
       m.phase += dt * (1.6 + sp * 4);
       const swing = Math.sin(m.phase) * Math.min(0.8, sp * 0.3);
       m.strikeT = Math.max(0, m.strikeT - dt);
+      m.tick?.(m);
       m.limbs.forEach((l, j) => {
         const arm = j >= 2 && m.limbs.length === 4 && def.hostile;
         l.rotation.x = (j % 2 ? -swing : swing) * (arm ? 0.6 : 1) + (arm ? (m.reach && m.chasing ? -1.0 : 0) - Math.sin((m.strikeT / 0.3) * Math.PI) * 1.3 : 0);

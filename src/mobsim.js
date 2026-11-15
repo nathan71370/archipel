@@ -12,6 +12,10 @@ export const MOB = {
   rodeur: { name: 'Rôdeur', hostile: true, nightOnly: true, hw: 0.32, h: 1.9, hp: 16, speed: 3.1, dmg: 3, xp: 8, drops: [[I.DUST, 0, 2]] },
   givrelin: { name: 'Givrelin', hostile: true, nightOnly: true, hw: 0.32, h: 1.9, hp: 22, speed: 2.6, dmg: 4, xp: 10, drops: [[I.FROST, 1, 2]] },
   colosse: { name: 'Colosse de braise', hostile: true, boss: true, hw: 0.8, h: 3.9, hp: 420, speed: 2.9, dmg: 9, reach: 2.6, xp: 150, drops: [[I.HEART, 1, 1], [I.EMBER_SHARD, 6, 10], [I.DUST, 4, 8]] },
+  gelee: { name: 'Gelée', hostile: true, hop: true, hw: 0.4, h: 0.7, hp: 12, speed: 2.3, dmg: 2, xp: 5, drops: [[I.JELLY, 1, 2]] },
+  cracheur: { name: 'Cracheur des dunes', hostile: true, nightOnly: true, ranged: { range: 13, dmg: 3, cd: 2.4 }, hw: 0.4, h: 0.9, hp: 14, speed: 2.4, dmg: 2, xp: 10, drops: [[I.CHITIN, 1, 2], [I.DUST, 0, 1]] },
+  golem: { name: 'Golem de cendre', hostile: true, hw: 0.55, h: 2.5, hp: 70, speed: 1.9, dmg: 8, reach: 1.9, xp: 25, drops: [[I.EMBER_SHARD, 1, 2], [B.BASALT, 2, 4], [I.COIN, 0, 2]] },
+  planeuse: { name: 'Planeuse', hostile: false, fly: true, hw: 0.6, h: 0.4, hp: 6, speed: 3.4, xp: 4, drops: [[I.FEATHER, 2, 4]] },
   brandon: { name: 'Brandon', hostile: true, hw: 0.38, h: 2.0, hp: 26, speed: 3.6, dmg: 5, xp: 14, drops: [[I.EMBER_SHARD, 0, 1], [I.DUST, 1, 2]] },
 };
 
@@ -26,6 +30,8 @@ export class MobSim {
     this.hostileTimer = 12;
     this.passiveTimer = 3;
     this.turretTimer = 0;
+    this.jellyTimer = 6;
+    this.flyTimer = 10;
     this.turn = 0;
   }
 
@@ -35,7 +41,7 @@ export class MobSim {
       id: this.nextId++, type, def, job,
       pos: { x, y, z }, vel: { x: 0, y: 0, z: 0 }, hw: def.hw, h: def.h,
       hp: def.hp, yaw: Math.random() * 6.28, wyaw: 0, walk: false, think: 0, cd: 0, flash: 0, flee: 0, strike: 0, chasing: false,
-      onGround: false, hitWall: false, home: null,
+      onGround: false, hitWall: false, home: null, alt: y,
     };
     this.list.push(m);
     return m;
@@ -120,8 +126,23 @@ export class MobSim {
       const tooClose = g && env.players.some((p) => Math.hypot(p.pos.x - g.x, p.pos.z - g.z) < 24);
       if (g && !tooClose && g.ground !== B.LEAVES && g.ground !== B.BUSH && g.ground !== B.CAP && !w.villageNear(g.x, g.z, 34) && !env.safe(g.x, g.y, g.z)) {
         const cold = g.ground === B.SNOW || g.ground === B.ICE;
-        this.spawn(env.dim === 1 ? 'brandon' : cold ? 'givrelin' : 'rodeur', g.x + 0.5, g.y + 1, g.z + 0.5);
+        this.spawn(env.dim === 1 ? (Math.random() < 0.22 ? 'golem' : 'brandon') : cold ? 'givrelin' : g.ground === B.SAND ? 'cracheur' : 'rodeur', g.x + 0.5, g.y + 1, g.z + 0.5);
         this.hostileTimer = env.dim === 1 ? 8 : 11;
+      }
+    }
+    // Gelées : de jour comme de nuit, mais seulement sur le mycélium des champignonnières.
+    if (env.dim === 0 && this.jellyTimer <= 0) {
+      this.jellyTimer = 5;
+      const g = this.findGround(P, 18, 46);
+      const near = this.list.reduce((n, m) => n + (m.type === 'gelee' && Math.hypot(m.pos.x - P.x, m.pos.z - P.z) < 80 ? 1 : 0), 0);
+      if (g && g.ground === B.MYCEL && near < 3 && !env.players.some((p) => Math.hypot(p.pos.x - g.x, p.pos.z - g.z) < 14) && !env.safe(g.x, g.y, g.z)) { this.spawn('gelee', g.x + 0.5, g.y + 1, g.z + 0.5); this.jellyTimer = 16; }
+    }
+    // Planeuses : elles tournent haut dans le ciel, de jour.
+    if (env.dim === 0 && !env.night && this.flyTimer <= 0) {
+      this.flyTimer = 20;
+      if (this.list.reduce((n, m) => n + (m.type === 'planeuse' ? 1 : 0), 0) < 2) {
+        const a = Math.random() * 6.283, d = 30 + Math.random() * 25;
+        this.spawn('planeuse', P.x + Math.cos(a) * d, Math.min(150, P.y + 14 + Math.random() * 12), P.z + Math.sin(a) * d);
       }
     }
     if (env.dim === 0 && !env.night && this.passiveTimer <= 0 && this.count(false, P) < 6) {
@@ -136,7 +157,7 @@ export class MobSim {
   // env : { dim, night, players: [{ id, pos, alive }], safe(x, y, z), turrets: [{ x, y, z }] }
   update(dt, env) {
     const w = this.world, players = env.players;
-    this.hostileTimer -= dt; this.passiveTimer -= dt;
+    this.hostileTimer -= dt; this.passiveTimer -= dt; this.jellyTimer -= dt; this.flyTimer -= dt;
     if ((this.spawnTimer -= dt) <= 0) {
       this.spawnTimer = 1.5;
       if (players.length) this.trySpawn(env, players[this.turn++ % players.length].pos);
@@ -179,12 +200,37 @@ export class MobSim {
         if (m.hp <= 0) { this.remove(m); continue; }
       }
 
+      if (def.fly) {
+        // Vol plané en larges cercles autour de son altitude ; frappée, elle s'enfuit plus vite.
+        if (m.think <= 0) { m.think = 2 + Math.random() * 3; m.wyaw = (Math.random() - 0.5) * 0.8; }
+        m.flee = Math.max(0, m.flee - dt);
+        m.yaw += m.wyaw * dt;
+        const sp = def.speed * (m.flee > 0 ? 2.2 : 1), k = Math.min(1, 3 * dt);
+        v.x += (-Math.sin(m.yaw) * sp - v.x) * k;
+        v.z += (-Math.cos(m.yaw) * sp - v.z) * k;
+        v.y += ((m.alt + Math.sin(m.id + m.yaw) * 1.5 - m.pos.y) * 0.8 - v.y) * k;
+        moveBody(w, m, dt);
+        if (m.hitWall) { m.yaw += 2.2; m.alt = Math.min(150, m.alt + 3); }
+        continue;
+      }
       let wx = 0, wz = 0, speed = def.speed;
       m.chasing = false;
       const reach = def.reach ?? 1.35;
       if (def.hostile && P && dist < (def.boss ? 60 : 22) && Math.abs(dy) < (def.boss ? 30 : 8)) {
         m.chasing = true;
         if (dist > 0.9) { wx = dx / dist; wz = dz / dist; }
+        if (def.ranged && dist < def.ranged.range && dist > 3.5) {
+          // À distance : il s'arrête, fait face et crache s'il voit sa cible.
+          wx = wz = 0;
+          const diff = Math.atan2(-dx, -dz) - m.yaw;
+          m.yaw += Math.atan2(Math.sin(diff), Math.cos(diff)) * Math.min(1, 8 * dt);
+          if (m.cd <= 0) {
+            m.cd = def.ranged.cd;
+            const a = { x: m.pos.x, y: m.pos.y + m.h * 0.8, z: m.pos.z }, b = { x: P.pos.x, y: P.pos.y + 1.2, z: P.pos.z };
+            const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) || 1, dd = { x: (b.x - a.x) / len, y: (b.y - a.y) / len, z: (b.z - a.z) / len };
+            if (!w.raycast(a, dd, len - 0.5)) { m.strike = 0.3; this.hooks.tracer(a, b); this.hooks.hitPlayer(P.id, def.ranged.dmg, dx / dist * 0.4, dz / dist * 0.4); }
+          }
+        }
         if (dist < reach && Math.abs(dy) < reach + 0.4 && m.cd <= 0) { m.cd = 1.1; m.strike = 0.3; this.hooks.hitPlayer(P.id, def.dmg, dx / dist, dz / dist); }
       } else if (m.flee > 0 && P) {
         m.flee -= dt; wx = -dx / dist; wz = -dz / dist; speed *= 2.4;
