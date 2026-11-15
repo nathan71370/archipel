@@ -317,6 +317,7 @@ function startGame({ net = null, welcome = null }) {
     ['armure', 'Bien protégé', "Porte une pièce d'armure (la chitine des scarabées suffit).", () => inv.armor.some(Boolean), 20],
     ['lanterne', 'Que la lumière soit', 'Fabrique une lanterne pour tes nuits et tes galeries.', () => has(B.LANTERN), 15],
     ['champ', 'Premier champ', 'Laboure la terre à la houe et sème des graines (les buissons en donnent).', () => has(I.WHEAT), 15],
+    ['eleveur', 'Éleveur', 'Donne du blé à un Nuaki (ou des graines à un Picore) : un petit naît.', () => flags.has('breed'), 20],
     ['pain', 'Boulanger', 'Trois blés font un pain, bien plus nourrissant que des baies.', () => has(I.BREAD), 15],
     ['coffre', 'Un peu de rangement', 'Fabrique un coffre.', () => has(B.CHEST), 10],
     ['village', 'Premier contact', 'Trouve un village.', () => flags.has('village'), 25],
@@ -337,6 +338,8 @@ function startGame({ net = null, welcome = null }) {
     ['ailes', 'Libre comme l\'air', 'Fabrique les ailes de braise (il te faut un réacteur dorsal).', () => has(I.WINGS), 100],
     ['forge', 'Fusion', 'Fabrique une forge à fusion. Elle réclame 300 W : un réacteur.', () => has(B.FORGE), 100],
     ['alliage', 'Alliage stellaire', "Fonds braise, cristal et uranite dans la forge.", () => has(I.STAR), 100],
+    ['ferme', 'Ferme automatique', 'Fabrique une récolteuse : elle cueille et replante toute seule.', () => has(B.HARVESTER), 60],
+    ['telepad', 'Raccourci', 'Relie deux téléporteurs alimentés et traverse.', () => flags.has('telepad'), 80],
     ['composite', 'Plus léger que l\'air', 'Compresseur : du charbon au carbone, puis aux plaques composites.', () => has(I.COMPOSITE), 60],
     ['fusee', 'Compte à rebours', 'Fabrique une fusée (le guide du sac détaille les étapes).', () => has(B.ROCKET), 120],
     ['ether', "L'Éther", 'Décolle avec 4 bidons de carburant. Emporte de l\'oxygène, et de quoi revenir.', () => flags.has('ether'), 150],
@@ -819,6 +822,10 @@ function startGame({ net = null, welcome = null }) {
     if (net) request({ t: 'tbucket', d: dim, x, y, z, id, bucket }, (m) => cb(m.id ?? null));
     else { cb(sim.bucket(sim.tileAt(dim, x, y, z, id), bucket)); dirty = true; }
   }
+  function padOp(x, y, z, cb) {
+    if (net) request({ t: 'tpad', d: dim, x, y, z }, (m) => cb(m.res ?? null));
+    else cb(sim.padDest(dim, x, y, z));
+  }
   function wrenchOp(x, y, z, side, cb) {
     if (net) request({ t: 'twrench', d: dim, x, y, z, side }, (m) => cb(m.res ?? null));
     else { cb(sim.wrench(dim, x, y, z, side)); dirty = true; }
@@ -850,8 +857,8 @@ function startGame({ net = null, welcome = null }) {
   const C = I.COIN;
   const TRADES = [
     [ // Céliens : cultivateur, forgeron, érudit
-      [[[C, 1], [I.BERRIES, 6]], [[C, 2], [I.WHEAT, 8]], [[I.SEEDS, 4], [C, 1]], [[C, 2], [I.MEAT_COOKED, 3]], [[C, 2], [I.FEATHER, 6]], [[C, 1], [I.MUSHROOM, 4]], [[I.BUCKET, 1], [C, 4]], [[I.SEED_COAL, 1], [C, 14]], [[B.BEACON, 1], [C, 8]]],
-      [[[C, 1], [I.COAL, 8]], [[C, 2], [B.IRON_ORE, 4]], [[C, 2], [B.COPPER_ORE, 4]], [[I.IRON, 2], [C, 3]], [[I.WRENCH, 1], [C, 5]], [[I.PLATE, 4], [C, 7]], [[I.SEED_IRON, 1], [C, 20]]],
+      [[[C, 1], [I.BERRIES, 6]], [[C, 2], [I.WHEAT, 8]], [[I.SEEDS, 4], [C, 1]], [[C, 2], [I.MEAT_COOKED, 3]], [[C, 2], [I.FEATHER, 6]], [[C, 1], [B.WOOL, 4]], [[C, 1], [I.MUSHROOM, 4]], [[I.BUCKET, 1], [C, 4]], [[I.SEED_COAL, 1], [C, 14]], [[B.BEACON, 1], [C, 8]]],
+      [[[C, 1], [I.COAL, 8]], [[C, 2], [B.IRON_ORE, 4]], [[C, 2], [B.COPPER_ORE, 4]], [[I.IRON, 2], [C, 3]], [[I.WRENCH, 1], [C, 5]], [[I.SHEARS, 1], [C, 4]], [[I.PLATE, 4], [C, 7]], [[I.SEED_IRON, 1], [C, 20]]],
       [[[C, 3], [B.CRYSTAL, 2]], [[C, 2], [I.DUST, 2]], [[B.CRYSTAL, 1], [C, 4]], [[I.CIRCUIT, 2], [C, 9]], [[B.ALTAR, 1], [C, 16]], [[I.SEED_CRYSTAL, 1], [C, 26]]],
     ],
     [ // Cendreux : récupérateur, fondeur, sourcier
@@ -1291,6 +1298,23 @@ function startGame({ net = null, welcome = null }) {
   function secondary() {
     const heldNow = inv.slots[selected], heldIt = heldNow && ITEMS[heldNow.id];
     if (mobTarget?.def.villager) { input.use = false; openTrade(mobTarget); return; }
+    // Élevage : nourrir une bête avec ce qu'elle aime, ou la tondre.
+    if (mobTarget && heldNow && (mobTarget.def.breed === heldNow.id || (heldNow.id === I.SHEARS && mobTarget.def.wool))) {
+      const feed = heldNow.id !== I.SHEARS;
+      let ok = true;
+      if (net) net.send({ t: feed ? 'feed' : 'shear', id: mobTarget.id });
+      else ok = feed ? mobSim.feed(mobSim.byId(mobTarget.id)) : mobSim.shear(mobSim.byId(mobTarget.id));
+      if (!ok) ui.toast(feed ? `${mobTarget.def.name} n'a plus faim pour l'instant.` : 'Sa laine n\'a pas encore repoussé.');
+      else if (feed) {
+        if (!creative && --heldNow.n <= 0) inv.slots[selected] = null;
+        flags.add('breed');
+        if (!net) ui.toast(`Un petit ${mobTarget.def.name} est né.`);
+        blip(740, 0.18, 'triangle', 0.05);
+        ui.refreshHotbar(selected);
+      } else snd.swing();
+      swing = 1; useCd = 0.5; dirty = true;
+      return;
+    }
     // Seau vide : puiser un liquide du monde.
     if (heldNow?.id === I.BUCKET && !(target && MACHINES[target.id]?.tank)) {
       const hit = world.raycast(camera.position, dir, REACH, true);
@@ -1347,6 +1371,22 @@ function startGame({ net = null, welcome = null }) {
         if (!creative) { inv.remove(I.FUEL, 4); give(I.CAN, 4); } // les bidons vides restent
         launch(x, y, z);
         ui.refreshHotbar(selected);
+        return;
+      }
+      else if (id === B.TELEPAD) {
+        const here = dim;
+        padOp(x, y, z, (res) => {
+          if (!res || dim !== here) return;
+          if (res.err) { ui.toast(res.err === 'off' ? 'Ce téléporteur n\'est pas alimenté (15 W).' : 'Aucun autre téléporteur alimenté dans ce monde.'); return; }
+          flags.add('telepad');
+          fade.classList.add('on'); setTimeout(() => fade.classList.remove('on'), 180);
+          world.ensure(res.x, res.z, 2);
+          const dest = { x: res.x + 0.5, y: res.y + 0.3, z: res.z + 0.5 };
+          player.teleport(dest);
+          player.safe = { ...dest };
+          blip(1300, 0.3, 'sine', 0.07); blip(650, 0.4, 'sine', 0.05);
+        });
+        useCd = 0.8;
         return;
       }
       else if (id === B.MODBENCH) { input.use = false; snd.open(false); openInventory({ altar: 'mods' }); return; }

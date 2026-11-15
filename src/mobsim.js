@@ -4,8 +4,8 @@ import { moveBody } from './player.js';
 import { B, I, LIQUID } from './items.js';
 
 export const MOB = {
-  nuaki: { name: 'Nuaki', hostile: false, hw: 0.42, h: 1.0, hp: 8, speed: 1.3, xp: 2, drops: [[I.MEAT_RAW, 1, 2]] },
-  picore: { name: 'Picore', hostile: false, hw: 0.25, h: 0.6, hp: 4, speed: 1.7, xp: 1, hop: true, drops: [[I.FEATHER, 1, 2], [I.MEAT_RAW, 0, 1]] },
+  nuaki: { name: 'Nuaki', hostile: false, hw: 0.42, h: 1.0, hp: 8, speed: 1.3, xp: 2, breed: I.WHEAT, wool: true, drops: [[I.MEAT_RAW, 1, 2]] },
+  picore: { name: 'Picore', hostile: false, hw: 0.25, h: 0.6, hp: 4, speed: 1.7, xp: 1, hop: true, breed: I.SEEDS, drops: [[I.FEATHER, 1, 2], [I.MEAT_RAW, 0, 1]] },
   celien: { name: 'Célien', hostile: false, villager: true, hw: 0.3, h: 1.85, hp: 20, speed: 1.1, xp: 0, drops: [] },
   cendreux: { name: 'Cendreux', hostile: false, villager: true, hw: 0.3, h: 1.85, hp: 24, speed: 1.1, xp: 0, drops: [] },
   scarab: { name: 'Scarabée des sables', hostile: false, hw: 0.36, h: 0.5, hp: 6, speed: 1.5, xp: 2, drops: [[I.CHITIN, 1, 2]] },
@@ -42,7 +42,7 @@ export class MobSim {
       id: this.nextId++, type, def, job,
       pos: { x, y, z }, vel: { x: 0, y: 0, z: 0 }, hw: def.hw, h: def.h,
       hp: def.hp, yaw: Math.random() * 6.28, wyaw: 0, walk: false, think: 0, cd: 0, flash: 0, flee: 0, strike: 0, chasing: false,
-      onGround: false, hitWall: false, home: null, alt: y,
+      onGround: false, hitWall: false, home: null, alt: y, love: 0, wool: 0,
     };
     this.list.push(m);
     return m;
@@ -69,6 +69,21 @@ export class MobSim {
       if (n > 0) this.hooks.drop(m.pos.x, m.pos.y + 0.4, m.pos.z, { id, n });
     }
     this.remove(m);
+    return true;
+  }
+
+  // Nourrir une bête avec ce qu'elle aime : un petit naît à côté d'elle (pas plus d'une fois par minute et demie).
+  feed(m) {
+    if (!m || !m.def.breed || m.love > 0 || this.count(false, m.pos) >= 14) return false;
+    m.love = 90;
+    this.spawn(m.type, m.pos.x + (Math.random() - 0.5), m.pos.y + 0.2, m.pos.z + (Math.random() - 0.5)).love = 90;
+    return true;
+  }
+  // Tondre : de la laine tombe, qui repousse en deux minutes.
+  shear(m) {
+    if (!m || !m.def.wool || m.wool > 0) return false;
+    m.wool = 120;
+    this.hooks.drop(m.pos.x, m.pos.y + 0.6, m.pos.z, { id: B.WOOL, n: 1 + Math.floor(Math.random() * 2) });
     return true;
   }
 
@@ -191,7 +206,7 @@ export class MobSim {
       }
       if (far > (m.home ? 130 : def.boss ? 220 : 90) || m.pos.y < -20) { this.remove(m); continue; }
       if (!w.ready(m.pos.x, m.pos.z)) continue;
-      m.cd -= dt; m.flash -= dt; m.think -= dt; m.strike = Math.max(0, m.strike - dt);
+      m.cd -= dt; m.flash -= dt; m.think -= dt; m.love -= dt; m.wool -= dt; m.strike = Math.max(0, m.strike - dt);
       dist = dist || 0.001;
       const dx = P ? P.pos.x - m.pos.x : 0, dz = P ? P.pos.z - m.pos.z : 0, dy = P ? P.pos.y - m.pos.y : 0;
 

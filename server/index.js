@@ -202,6 +202,9 @@ function onMessage(ws, raw) {
       if (mob && typeof m.dmg === 'number' && m.dmg > 0 && m.dmg <= 40 && Math.hypot(mob.pos.x - me.s[1], mob.pos.z - me.s[3]) < 80) mobs[me.s[0]].hurt(mob, m.dmg, Number(m.kx) || 0, Number(m.kz) || 0, me.id);
       break;
     }
+    case 'feed': if (me.s) mobs[me.s[0]].feed(mobs[me.s[0]].byId(m.id)); break;
+    case 'shear': if (me.s) mobs[me.s[0]].shear(mobs[me.s[0]].byId(m.id)); break;
+    case 'tpad': reply(ws, m, { res: at(m) ? sim.padDest(m.d, m.x, m.y, m.z) : null }); break;
     case 'summon': // appât du Colosse, dans la Braise seulement
       if (me.s && me.s[0] === 1 && [m.x, m.y, m.z].every(Number.isFinite) && Math.hypot(m.x - me.s[1], m.z - me.s[3]) < 12) mobs[1].summon(m.x, m.y, m.z);
       break;

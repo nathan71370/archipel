@@ -35,6 +35,15 @@ const NOTES = [
     "4. Dans l'Éther il n'y a pas d'air : le planeur ne porte pas (réacteur dorsal ou ailes de braise), et il faut des cartouches d'oxygène (électrolyseur) ou un respirateur.",
     "5. On y trouve le titane : aile de titane, armure bionique et ses modules. Les panneaux solaires y donnent le double, sans nuit.",
   ] },
+  { title: 'Ferme automatique', icon: B.HARVESTER, find: 'ferme automatique recolteuse arroseur culture ble recolte', steps: [
+    "Récolteuse (40 W) : elle cueille tout ce qui est mûr à 4 blocs autour d'elle, blé comme plants de minerai, et replante aussitôt.",
+    "Arroseur (10 W + eau) : à 4 blocs autour de lui, tout pousse trois fois plus vite. Une pompe ou un tuyau à fluides le remplit.",
+    "Un tuyau à objets réglé sur « tire » vide la récolteuse vers un coffre.",
+  ] },
+  { title: 'Élevage et téléporteurs', icon: B.TELEPAD, find: 'elevage nourrir nuaki picore laine cisailles tondre teleporteur', steps: [
+    "Un Nuaki nourri au blé, ou un Picore aux graines, donne naissance à un petit. Les cisailles tondent un Nuaki : la laine repousse en deux minutes.",
+    "Téléporteur : clic droit sur un téléporteur alimenté (15 W) pour rejoindre le téléporteur alimenté le plus proche du même monde.",
+  ] },
   { title: 'Germes de minerai', icon: 184, find: 'germe minerai planter cultivateur graine pousse', steps: [
     "Un germe s'obtient à l'imprimante 3D (8 minerais + 1 circuit) ou auprès des villageois.",
     "Planté sur de la terre labourée à la houe, il pousse seul en quelques minutes. À la récolte, le germe revient.",

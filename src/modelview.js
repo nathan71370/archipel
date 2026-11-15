@@ -183,12 +183,12 @@ const BUILD = {
     return { drive: 'always', update: (s) => { open += (((s.v & 128) ? 1 : 0) - open) * Math.min(1, s.dt * 9); lid.rotation.x = open * 1.15; } };
   },
   [B.TANK]: (k) => {
-    const water = k.lit(11.6, 12, 11.6, T.WATER, 8, 8, 8), lava = k.glow(11.6, 12, 11.6, T.LAVA, 8, 8, 8);
+    const water = k.lit(11.6, 12, 11.6, T.WATER, 8, 8, 8), lava = k.glow(11.6, 12, 11.6, T.LAVA, 8, 8, 8), fuel = k.lit(11.6, 12, 11.6, T.M_ORANGE, 8, 8, 8);
     let h = 0;
     return { drive: 'always', update: (s) => {
-      const lvl = ((s.v >> 2) & 15) / 8, hot = !!(s.v & 64), m = hot ? lava : water;
+      const lvl = ((s.v >> 2) & 15) / 8, hot = !!(s.v & 64), oil = !!(s.v & 128), m = hot ? lava : oil ? fuel : water;
       h += (lvl - h) * Math.min(1, s.dt * 4);
-      water.visible = !hot && h > 0.01; lava.visible = hot && h > 0.01;
+      water.visible = !hot && !oil && h > 0.01; lava.visible = hot && h > 0.01; fuel.visible = oil && h > 0.01;
       m.scale.y = Math.max(0.01, h); m.position.y = (2 + 6 * h) * U;
     } };
   },
@@ -223,6 +223,17 @@ const BUILD = {
       lamp.visible = lit || s.lv > 0.04; lamp.scale.setScalar(lit ? 1 : 0.4 + 0.3 * Math.sin(s.t * 6));
       beam.visible = sky.visible = lit; beam.rotation.y = s.t * 0.8;
     } };
+  },
+  [B.HARVESTER]: (k) => {
+    const arm = k.pivot(8, 15, 8);
+    k.lit(14, 0.8, 1.2, T.M_STEEL, 0, 0, 0, arm); k.lit(1.2, 3, 1.2, T.M_RED, 6.4, -1.4, 0, arm); k.lit(1.2, 3, 1.2, T.M_RED, -6.4, -1.4, 0, arm);
+    return { sound: 'rotor', update: (s) => { arm.rotation.y = s.ph * 4; } };
+  },
+  [B.SPRINKLER]: (k) => {
+    const head = k.pivot(8, 13.6, 8);
+    k.lit(9, 0.8, 0.8, T.M_COPPER, 0, 0, 0, head);
+    const jets = [k.glow(0.5, 0.5, 7, T.M_CYAN, 4.4, 0, 3.6, head), k.glow(0.5, 0.5, 7, T.M_CYAN, -4.4, 0, -3.6, head)];
+    return { update: (s) => { head.rotation.y = s.ph * 5; for (const j of jets) j.visible = s.lv > 0.3 && Math.sin(s.t * 30) > -0.5; } };
   },
   [B.ALLOY]: (k) => {
     const hot = [k.glow(6, 4, 0.3, T.M_HOT, 8, 6.5, 0.85), k.glow(6, 4, 0.3, T.M_HOT, 8, 6.5, 15.15), k.glow(2.6, 0.4, 2.6, T.M_HOT, 11.5, 12.2, 4.5)], smoke = k.smoke(11.5, 12.5, 4.5);

@@ -1,7 +1,7 @@
 // Simulation partagée (navigateur en solo, serveur en multijoueur) :
 // conteneurs, machines, réseau électrique, tuyaux à objets et à fluides.
 // Aucun accès au DOM ni à Three.js.
-import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW, F_FUEL } from './items.js';
+import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW, REPLANT, F_FUEL } from './items.js';
 
 const rec = (ins, out, time) => ({ ins, out, time });
 
@@ -94,6 +94,8 @@ export const MACHINES = {
   [B.COMPRESSOR]: { slots: ['in', 'in', 'out'], recipes: COMPRESS, power: 45, hint: 'Presse le charbon en carbone, puis carbone et plaques en composite : léger, solide, bon pour voler loin.' },
   [B.REFINERY]: { slots: ['in'], distill: { id: I.COAL, amt: 250, time: 4 }, power: 60, tank: 4000, hint: "Distille le charbon en carburant liquide (250 L par charbon). Un tuyau à fluides, ou une embouteilleuse collée contre elle, l'emporte." },
   [B.CANNER]: { slots: ['in', 'out'], recipes: CAN, power: 20, tank: 4000, fluid: F_FUEL, fluidUse: 500, hint: 'Remplit les bidons vides de carburant : 500 L par bidon.' },
+  [B.HARVESTER]: { slots: ['out', 'out', 'out', 'out'], harvest: 4, time: 3, power: 40, hint: 'Cueille ce qui est mûr à 4 blocs autour d\'elle (blé, plants de minerai) et replante aussitôt. Un tuyau réglé sur « tire » la vide.' },
+  [B.SPRINKLER]: { slots: [], sprinkle: 4, tank: 4000, fluid: B.WATER, power: 10, hint: 'Arrose à 4 blocs autour de lui : tout y pousse trois fois plus vite. Boit 5 L d\'eau par seconde.' },
   [B.ALLOY]: { slots: ['in', 'in', 'out'], recipes: ALLOYS, power: 50, hint: "Fond deux matières ensemble : fer et carbone donnent l'acier, cuivre et cristal l'électrum." },
   [B.ELECTRO]: { slots: ['out'], makes: [I.OXY, 1], time: 8, power: 60, tank: 4000, fluid: B.WATER, fluidUse: 500, hint: "Tire de l'oxygène de l'eau, en cartouches. Indispensable dans l'Éther sans respirateur." },
   [B.CONDENSER]: { slots: ['out'], makes: [I.DUST, 1], time: 10, power: 150, hint: "Tire de la poussière d'orage de l'air. Gourmand : 150 W." },
@@ -120,11 +122,11 @@ export function connects(pipe, id) {
   if (pipe === B.ITEM_PIPE) return id === B.ITEM_PIPE || MACHINES[id]?.slots.length > 0 || !!MACHINES[id]?.terminal;
   return id === B.FLUID_PIPE || !!MACHINES[id]?.tank;
 }
-const DRAW = { [B.LAMP]: 1, [B.FAN]: 5, [B.TURRET]: 5, [B.TNT]: 0 };
+const DRAW = { [B.LAMP]: 1, [B.FAN]: 5, [B.TURRET]: 5, [B.TNT]: 0, [B.TELEPAD]: 15 };
 // Câbles, générateurs et machines conduisent ; lampes, ventilateurs, tourelles et poudrières sont en bout de ligne.
 const CONDUCT = new Set([B.CABLE, B.CASING, B.BATTERY, B.TURBINE, B.SOLAR, B.GENERATOR, B.LAVA_GEN, B.CORE,
-  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER]);
-const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, ...Object.keys(GROW).map(Number)]);
+  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER, B.HARVESTER, B.SPRINKLER]);
+const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, ...Object.keys(GROW).map(Number), ...Object.keys(REPLANT).map(Number)]);
 
 export const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 export const key = (x, y, z) => x + ',' + y + ',' + z;
@@ -158,7 +160,7 @@ export class Sim {
   //         vis(d, clé, valeur ou null) quand l'état visible d'un bloc change, setBlock(d, x, y, z, id) pour les cultures qui poussent
   constructor(hooks) {
     this.hooks = hooks;
-    this.dims = [0, 1, 2].map(() => ({ blocks: new Map(), tiles: new Map(), vis: new Map(), open: new Map(), nets: null, pipes: null, powered: new Set(), active: new Set(), logi: 0 }));
+    this.dims = [0, 1, 2].map(() => ({ blocks: new Map(), tiles: new Map(), vis: new Map(), open: new Map(), wet: [], nets: null, pipes: null, powered: new Set(), active: new Set(), logi: 0 }));
     this._act = null; // machines en marche pendant le pas en cours
     this.time = 0.3;
     this.rolls = 0;
@@ -415,7 +417,22 @@ export class Sim {
     return null;
   }
 
-  wants(tile, def) {
+  // Premier plant mûr à portée d'une récolteuse (c : sa position), dont la récolte tient dans ses sorties.
+  ripeNear(D, tile, def, c) {
+    const r = def.harvest;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      const b = D.blocks.get(key(c.x + dx, c.y + dy, c.z + dz));
+      if (!b || REPLANT[b.id] == null) continue;
+      const [id, n] = BLOCKS[b.id].drop;
+      if (this.outRoom(tile, def, id, n)) return b;
+    }
+    return null;
+  }
+
+  // c : position de la machine, D : son monde (utiles à celles qui agissent autour d'elles).
+  wants(tile, def, c, D) {
+    if (def.harvest) return !!c && !!this.ripeNear(D, tile, def, c);
+    if (def.sprinkle) return (tile.f?.amt ?? 0) > 0;
     if (def.slots[0] === 'charge') { const s = tile.slots[0], ch = s && ITEMS[s.id].charge; return !!ch && (s.c ?? 0) < ch.max; }
     if (def.pump) return !!tile.src && (tile.f?.amt ?? 0) < def.tank;
     if (def.beacon) return !tile.lit;
@@ -424,7 +441,23 @@ export class Sim {
   }
 
   // dt : temps utile (réduit si le réseau manque de courant) ; full : temps réel écoulé.
-  work(tile, def, dt, full = dt) {
+  work(tile, def, dt, full = dt, c = null, d = 0) {
+    if (def.harvest) {
+      tile.max = def.time;
+      if ((tile.prog += dt) < def.time) return;
+      tile.prog = 0;
+      const b = c && this.ripeNear(this.dims[d], tile, def, c);
+      if (!b) return;
+      const [id, n] = BLOCKS[b.id].drop;
+      this.addOut(tile, def, id, n);
+      this.hooks.setBlock?.(d, b.x, b.y, b.z, REPLANT[b.id]);
+      return;
+    }
+    if (def.sprinkle) {
+      tile.f.amt = Math.max(0, tile.f.amt - 5 * dt);
+      if (c && dt > full * 0.5) this.dims[d].wet.push(c);
+      return;
+    }
     if (def.slots[0] === 'charge') {
       const s = tile.slots[0], ch = s && ITEMS[s.id].charge;
       if (ch && (s.c ?? 0) < ch.max) s.c = Math.min(ch.max, (s.c ?? 0) + 25 * dt);
@@ -525,7 +558,7 @@ export class Sim {
       for (const c of net.cons) {
         const def = MACHINES[c.id];
         c.tile = def ? D.tiles.get(c.k) : null;
-        c.w = def ? (c.tile && this.wants(c.tile, def) ? def.power : 0) : DRAW[c.id];
+        c.w = def ? (c.tile && this.wants(c.tile, def, c, D) ? def.power : 0) : DRAW[c.id];
         demand += c.w;
       }
       let cap = 0, stored = 0;
@@ -579,7 +612,7 @@ export class Sim {
         } else {
           for (const k of net.bats) { const t = D.tiles.get(k); if (!t) continue; const m = Math.min(MACHINES[B.BATTERY].store - t.e, delta, 200 * dt); t.e += m; delta -= m; stored += m; }
         }
-        for (const c of net.cons) if (c.tile && c.w > 0) { this.work(c.tile, MACHINES[c.id], dt * ratio, dt); if (ratio > 0.05) this._act?.add(c.k); }
+        for (const c of net.cons) if (c.tile && c.w > 0) { this.work(c.tile, MACHINES[c.id], dt * ratio, dt, c, d); if (ratio > 0.05) this._act?.add(c.k); }
       }
       net.s = supply; net.d = demand;
       const info = { s: Math.round(supply), d: demand, r: Math.round(ratio * 100) };
@@ -682,6 +715,20 @@ export class Sim {
     }
   }
 
+  // ---------- Téléporteurs ----------
+  // Un téléporteur alimenté envoie vers le téléporteur alimenté le plus proche du même monde.
+  padDest(d, x, y, z) {
+    const D = this.dims[d], k = key(x, y, z);
+    if (!D.powered.has(k)) return { err: 'off' };
+    let best = null, bd = Infinity;
+    for (const b of D.blocks.values()) {
+      if (b.id !== B.TELEPAD || (b.x === x && b.y === y && b.z === z) || !D.powered.has(key(b.x, b.y, b.z))) continue;
+      const dist = Math.hypot(b.x - x, b.y - y, b.z - z);
+      if (dist < bd) { bd = dist; best = b; }
+    }
+    return best ? { x: best.x, y: best.y, z: best.z } : { err: 'none' };
+  }
+
   // ---------- Terminal de stockage ----------
   termStores(d, x, y, z) {
     const D = this.dims[d], k = key(x, y, z);
@@ -745,7 +792,8 @@ export class Sim {
       for (const [k, t] of D.tiles) {
         if (t.id === B.TANK) {
           const amt = t.f?.amt ?? 0, lvl = amt > 0 ? Math.max(1, Math.round((amt / MACHINES[B.TANK].tank) * 8)) : 0;
-          this.setVis(d, k, ((D.vis.get(k) ?? 0) & 131) | (lvl << 2) | (amt > 0 && t.f.id === B.LAVA ? 64 : 0), false);
+          // Bit 6 : lave ; bit 7 : carburant.
+          this.setVis(d, k, ((D.vis.get(k) ?? 0) & 3) | (lvl << 2) | (amt > 0 && t.f.id === B.LAVA ? 64 : 0) | (amt > 0 && t.f.id === F_FUEL ? 128 : 0), false);
         } else if (t.id === B.LIGHTHOUSE) this.setVis(d, k, ((D.vis.get(k) ?? 0) & 3) | (t.lit ? 128 : 0), false);
       }
     }
@@ -758,7 +806,11 @@ export class Sim {
       const g = GROW[b.id];
       if (!g) continue;
       if (D.blocks.get(key(b.x, b.y - 1, b.z))?.id !== B.FARMLAND) { const [id, n] = BLOCKS[b.id].drop; this.hooks.setBlock?.(d, b.x, b.y, b.z, 0); this.hooks.drop(d, b.x, b.y, b.z, { id, n }); }
-      else if (Math.random() < 1 / g[1]) this.hooks.setBlock?.(d, b.x, b.y, b.z, g[0]);
+      else {
+        const wet = D.wet.some((s) => Math.abs(s.x - b.x) <= 4 && Math.abs(s.z - b.z) <= 4 && Math.abs(s.y - b.y) <= 2);
+        if (Math.random() < (wet ? 3 : 1) / g[1]) this.hooks.setBlock?.(d, b.x, b.y, b.z, g[0]);
+      }
     }
+    D.wet.length = 0;
   }
 }
