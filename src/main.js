@@ -267,6 +267,7 @@ function startGame({ net = null, welcome = null }) {
   inv.load(save?.inv);
   // Le planeur est devenu un objet : une partie commencée avant en reçoit un, une fois.
   if (save && !save.glider && !inv.glider()) inv.add(I.GLIDER1, 1);
+  if (save?.owed) inv.add(B.ROCKET, 1); // partie quittée en plein vol : la fusée est rendue
   let air = save?.air ?? 100; // oxygène, ne baisse que dans l'Éther
   let selected = save?.selected ?? 0;
   let respawnPoint = save?.respawn ?? null;
@@ -505,7 +506,7 @@ function startGame({ net = null, welcome = null }) {
 
   // ---------- Vie, faim, dégâts ----------
   function damage(amount, useArmor = true) {
-    if (mode === 'dead' || amount <= 0 || creative) return;
+    if (mode === 'dead' || amount <= 0 || creative || trip) return;
     if (useArmor) amount *= 1 - Math.min(0.8, inv.armorPoints() * 0.05);
     player.hp -= amount;
     vignette.classList.add('on');
@@ -620,6 +621,78 @@ function startGame({ net = null, welcome = null }) {
     player.safe = { ...dest };
     blip(180, 0.5, 'sine', 0.08);
     ui.toast(d === 2 ? "L'Éther. Pas d'air ici : surveille ton oxygène." : d === 1 ? 'Tu entres dans la Braise. Reste sur tes gardes.' : 'Retour sous le ciel.');
+  }
+
+  // ---------- Voyage en fusée ----------
+  // La fusée quitte son bloc, monte jusqu'à disparaître, puis descend se poser dans l'autre monde : c'est la même.
+  let trip = null;
+  const rocketMat = new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true });
+  function launch(x, y, z) {
+    const mesh = new THREE.Mesh(blockGeometry(B.ROCKET, 1), rocketMat);
+    const flame = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1, 0.45), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.3, 0.4), fog: false }));
+    const plume = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1, 0.9), new THREE.MeshBasicMaterial({ color: 0xffe9c2, transparent: true, opacity: 0.45, depthWrite: false, fog: false }));
+    flame.visible = plume.visible = false;
+    mesh.add(flame, plume);
+    mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+    scene.add(mesh);
+    world.setBlock(x, y, z, 0);
+    for (const k in input) input[k] = false;
+    player.gliding = false; player.fly = false; player.pull = null;
+    trip = { mesh, flame, plume, phase: 'up', t: 0, v: 0, dest: dim === 2 ? 0 : 2, ground: 0, lx: 0, lz: 0 };
+    mode = 'travel';
+    ui.toast('Mise à feu…');
+    blip(90, 1.2, 'sawtooth', 0.08);
+  }
+  function updateTrip(dt) {
+    const T = trip, m = T.mesh;
+    T.t += dt;
+    if (T.phase === 'up') {
+      // Une seconde de mise à feu, puis ça pousse de plus en plus fort.
+      if (T.t > 1) { if (T.v === 0) snd.boom(4); T.v = Math.min(80, T.v + (6 + T.v * 0.9) * dt); }
+      m.position.y += T.v * dt;
+      if (T.t > 5.2) fade.classList.add('on');
+      if (T.t > 5.8) arrive();
+    } else {
+      // Descente freinée : rapide en haut, douce à l'approche du sol.
+      const h = m.position.y - (T.ground + 0.5);
+      T.v = Math.max(2.2, Math.min(48, h * 1.3));
+      m.position.y = Math.max(T.ground + 0.5, m.position.y - T.v * dt);
+      if (h <= 0.02) { land(); return; }
+    }
+    const burn = T.phase === 'up' ? (T.t > 1 ? 1 : T.t * 0.3) : Math.min(1, 0.35 + T.v / 30), flick = 0.85 + Math.random() * 0.3;
+    T.flame.visible = T.plume.visible = burn > 0.05;
+    T.flame.scale.set(1, 2.2 * burn * flick, 1); T.flame.position.y = -0.5 - 1.1 * burn * flick;
+    T.plume.scale.set(1, 4 * burn * flick, 1); T.plume.position.y = -0.5 - 2 * burn * flick;
+    m.position.x += (Math.random() - 0.5) * 0.02 * burn; // vibration
+    player.pos.x = m.position.x; player.pos.y = m.position.y - 0.5; player.pos.z = m.position.z;
+    player.vel.x = player.vel.y = player.vel.z = 0;
+  }
+  function arrive() {
+    const T = trip, from = { x: T.mesh.position.x, z: T.mesh.position.z };
+    switchWorld(T.dest);
+    const isl = world.nearestIsland(from.x, from.z);
+    world.ensure(isl.x, isl.z, 2);
+    T.lx = isl.x + 2; T.lz = isl.z;
+    T.ground = world.surfaceY(T.lx, T.lz) + 1;
+    T.mesh.position.set(T.lx + 0.5, T.ground + 0.5 + 95, T.lz + 0.5);
+    T.phase = 'down'; T.t = 0; T.v = 48;
+    setTimeout(() => fade.classList.remove('on'), 150);
+  }
+  function land() {
+    const T = trip;
+    world.setBlock(T.lx, T.ground, T.lz, B.ROCKET);
+    scene.remove(T.mesh);
+    T.mesh.geometry.dispose(); T.flame.geometry.dispose(); T.flame.material.dispose(); T.plume.geometry.dispose(); T.plume.material.dispose();
+    const dest = { x: T.lx + 0.5, y: world.surfaceY(T.lx, T.lz + 2) + 1, z: T.lz + 2.5 };
+    player.teleport(dest);
+    player.safe = { ...dest };
+    player.yaw = 0; player.pitch = 0;
+    trip = null;
+    mode = 'play';
+    snd.land(18);
+    ui.toast(dim === 2 ? "L'Éther. Pas d'air ici : surveille ton oxygène." : 'Retour sous le ciel.');
+    dirty = true;
+    if (!debugLock && document.pointerLockElement !== canvas) pause();
   }
 
   // ---------- Poudrières ----------
@@ -1003,7 +1076,7 @@ function startGame({ net = null, welcome = null }) {
       const data = {
         dim, selected, inv, respawn: respawnPoint,
         pos: player.onGround ? player.pos : player.safe, yaw: player.yaw, pitch: player.pitch,
-        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air,
+        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air, owed: trip ? 1 : 0,
       };
       if (multi) net.send({ t: 'save', data });
       if (!multi) Object.assign(data, { seed, time: sky.time, clock: sky.clock, sim, edits: editsByDim.map((m) => [...m].map(([key, mm]) => [key, [...mm].flat()])) });
@@ -1270,9 +1343,9 @@ function startGame({ net = null, welcome = null }) {
         // La fusée relie le Ciel (ou la Braise) à l'Éther. Chaque décollage brûle 4 bidons.
         input.use = false;
         if (!creative && inv.count(I.FUEL) < 4) { ui.toast(`Il faut 4 bidons de carburant pour décoller (tu en as ${inv.count(I.FUEL)}).`); useCd = 0.5; return; }
-        if (!creative) inv.remove(I.FUEL, 4);
-        snd.boom(3);
-        travel(dim === 2 ? 0 : 2, B.ROCKET);
+        if (world.surfaceY(x, z) > y) { ui.toast('La fusée doit avoir le ciel dégagé au-dessus d\'elle.'); useCd = 0.5; return; }
+        if (!creative) { inv.remove(I.FUEL, 4); give(I.CAN, 4); } // les bidons vides restent
+        launch(x, y, z);
         ui.refreshHotbar(selected);
         return;
       }
@@ -1443,7 +1516,7 @@ function startGame({ net = null, welcome = null }) {
     const high = dim === 0 ? Math.min(1, Math.max(0, (player.pos.y - 60) / 80)) : 0;
     snd.loop('wind', dim === 2 ? 0 : Math.min(1, 0.1 + high * 0.14 + (airborne ? Math.max(0, speed - 6) / 22 : 0)), 380 + (airborne ? speed * 22 : 0));
     snd.loop('rain', dim === 0 ? sky.rain : 0);
-    snd.loop('fire', modelView.loud.fire);
+    snd.loop('fire', trip ? 1 : modelView.loud.fire);
     snd.loop('hum', modelView.loud.hum);
     snd.loop('rotor', modelView.loud.rotor);
   }
@@ -1456,7 +1529,7 @@ function startGame({ net = null, welcome = null }) {
   function frame(now) {
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = Math.max(last, now);
-    const playing = mode === 'play', running = playing || mode === 'inv' || mode === 'chat' || (multi && mode === 'menu');
+    const playing = mode === 'play', running = playing || mode === 'inv' || mode === 'chat' || mode === 'travel' || (multi && mode === 'menu');
 
     world.update(player.pos.x, player.pos.z);
 
@@ -1491,7 +1564,8 @@ function startGame({ net = null, welcome = null }) {
       if (input.jet && ITEMS[pack.id].charge && !creative) { pack.c = Math.max(0, pack.c - ITEMS[pack.id].charge.use * dt); dirty = true; }
 
       const wasWet = player.inLiquid;
-      const impact = player.update(dt, playing ? input : IDLE);
+      if (trip) updateTrip(dt);
+      const impact = trip ? 0 : player.update(dt, playing ? input : IDLE);
       if (impact > 5) snd.land(impact);
       if (!wasWet !== !player.inLiquid) snd.splash();
       if (impact > 15 && !inv.hasMod('spring')) damage((impact - 15) * 0.9 * (1 - 0.25 * (inv.armor[3]?.e?.feather ?? 0)), false);
@@ -1529,8 +1603,15 @@ function startGame({ net = null, welcome = null }) {
       }
     }
 
-    camera.position.set(player.pos.x, player.eyeY, player.pos.z);
-    camera.rotation.set(player.pitch, player.yaw, player.gliding ? Math.sin(now / 600) * 0.03 : 0);
+    if (trip) {
+      // Vue de l'extérieur : la caméra suit la fusée, en retrait.
+      const m = trip.mesh.position, back = trip.phase === 'up' ? 7 + Math.min(6, trip.t * 1.2) : 9;
+      camera.position.set(m.x + back * 0.7, m.y + (trip.phase === 'up' ? 1.5 - Math.min(4, trip.t) : 3), m.z + back);
+      camera.lookAt(m.x, m.y + 0.9, m.z);
+    } else {
+      camera.position.set(player.pos.x, player.eyeY, player.pos.z);
+      camera.rotation.set(player.pitch, player.yaw, player.gliding ? Math.sin(now / 600) * 0.03 : 0);
+    }
     const wantFov = player.gliding || player.pull ? 88 : input.run && player.moving && !player.sneaking ? 80 : 75;
     if (Math.abs(wantFov - fov) > 0.05) { fov += (wantFov - fov) * Math.min(1, dt * 6); camera.fov = fov; camera.updateProjectionMatrix(); }
     wing.visible = player.gliding && !player.fly;
@@ -1572,7 +1653,7 @@ function startGame({ net = null, welcome = null }) {
     const sw = Math.sin(swing * Math.PI);
     hand.position.set(HAND_POS.x - sw * 0.06, HAND_POS.y + Math.sin(bob) * 0.012 - sw * 0.05, HAND_POS.z - sw * 0.1);
     hand.rotation.set(-sw * 0.95, sw * 0.25, 0);
-    hand.visible = !player.gliding;
+    hand.visible = !player.gliding && !trip;
 
     for (let i = tracers.length - 1; i >= 0; i--) {
       const t = tracers[i];
@@ -1643,7 +1724,7 @@ function startGame({ net = null, welcome = null }) {
     get target() { return target; },
     get mode() { return mode; },
     get dim() { return dim; },
-    get creative() { return creative; }, command, say, openChat,
+    get creative() { return creative; }, get trip() { return trip; }, launch, command, say, openChat,
     player, sky, inv, camera, input, mobs: mobSim, mobView, fluids, ui, give, travel, damage, remotes, net, sim, drops, dropStack, blast, B, I, modelView, snd,
     select(i) { selected = i; ui.refreshHotbar(i); },
     tick(ms) { frame(last + ms); },

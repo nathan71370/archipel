@@ -1,9 +1,10 @@
+import { F_FUEL } from './items.js';
 import { B, BLOCKS, ITEMS, RECIPES, STATIONS, CATS, ARMOR_SLOTS, ENCHANTS, ELECTRIC, MODS, MOD_SLOTS, enchantsFor } from './items.js';
 import { MACHINES, GEN, GUIDE } from './sim.js';
 
 const $ = (id) => document.getElementById(id);
 const SLOT_LABEL = { in: 'Entrée', fuel: 'Combustible', out: 'Sortie', rod: 'Barre', charge: 'À charger', seed: 'Germe', any: 'Contenu' };
-const FLUID_NAME = { [B.WATER]: 'Eau', [B.LAVA]: 'Lave' };
+const FLUID_NAME = { [B.WATER]: 'Eau', [B.LAVA]: 'Lave', [F_FUEL]: 'Carburant' };
 const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
 // Recherche : sans majuscules ni accents.
 const norm = (t) => t.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
@@ -28,9 +29,9 @@ const NOTES = [
     "Attention : si un blindage disparaît pendant qu'une barre brûle, le cœur fond et explose en 10 secondes.",
   ] },
   { title: "L'Éther : fusée, oxygène, titane", icon: B.ROCKET, find: 'fusee ether espace titane oxygene carburant planete monde asteroide bionique', steps: [
-    "1. Compresseur : charbon → carbone, puis carbone + plaques → plaques composites.",
-    "2. Raffinerie (charbon + lave) : bidons de carburant. Il en faut 4 par décollage : emporte de quoi revenir.",
-    "3. Imprime un moteur-fusée, fabrique la fusée, pose-la à ciel ouvert et clic droit pour partir.",
+    "1. Compresseur : charbon → carbone, puis carbone + plaques → plaques composites. Fonderie d'alliages : fer + carbone → acier.",
+    "2. Raffinerie : charbon → carburant liquide. Embouteilleuse (collée à la raffinerie ou reliée par tuyau à fluides) : bidons vides → bidons de carburant.",
+    "3. Imprime un moteur-fusée, fabrique la fusée, pose-la à ciel ouvert et clic droit pour partir. Il faut 4 bidons par décollage : emporte de quoi revenir. La fusée fait le voyage avec toi.",
     "4. Dans l'Éther il n'y a pas d'air : le planeur ne porte pas (réacteur dorsal ou ailes de braise), et il faut des cartouches d'oxygène (électrolyseur) ou un respirateur.",
     "5. On y trouve le titane : aile de titane, armure bionique et ses modules. Les panneaux solaires y donnent le double, sans nuit.",
   ] },
@@ -72,6 +73,8 @@ export class UI {
       if (pal) { this.takeCreative(+pal.dataset.q, e.button, e.shiftKey); this.refresh(); return; }
       if (c) { this.cat = c.dataset.c; this.el.recipes.scrollTop = 0; this.render(); return; }
       if (g) { this.clickTerminal(g.dataset.g === 'put' ? null : +g.dataset.g, e.button, e.shiftKey); return; }
+      const u = e.target.closest('[data-u]');
+      if (u) { this.uninstall(u.dataset.u); this.refresh(); return; }
       if (o) { if (this.altar === 'mods') this.install(o.dataset.o); else this.enchant(o.dataset.o); this.refresh(); return; }
       if (d) { this.buy(this.trade.offers[+d.dataset.d]); this.refresh(); return; }
       if (e.target.closest('[data-e]')) { const cur = this.altarItem; this.altarItem = this.held; this.held = cur; this.refresh(); return; }
@@ -334,6 +337,16 @@ export class UI {
     this.hooks.installed?.(mod);
   }
 
+  // Retire un module : il revient dans le sac, intact.
+  uninstall(k) {
+    const st = this.altarItem, mod = MODS[k];
+    if (!st?.m?.includes(k)) return;
+    st.m = st.m.filter((x) => x !== k);
+    if (!st.m.length) delete st.m;
+    const left = this.inv.add(mod.item, 1);
+    if (left > 0) this.hooks.drop({ id: mod.item, n: 1 });
+  }
+
   buy(offer) {
     const [cid, cn] = offer.cost;
     if (this.inv.count(cid) < cn) return;
@@ -346,7 +359,7 @@ export class UI {
     if (this.altar === 'mods') {
       $('crafttitle').textContent = 'Atelier bionique';
       const st = this.altarItem, bio = st && ITEMS[st.id].bionic;
-      this.el.stations.textContent = `Pose une pièce d'armure bionique : elle reçoit jusqu'à ${MOD_SLOTS} modules, imprimés à l'imprimante 3D.`;
+      this.el.stations.textContent = `Pose une pièce d'armure bionique : elle reçoit jusqu'à ${MOD_SLOTS} modules, imprimés à l'imprimante 3D. Un clic sur un module installé le retire.`;
       this.el.tilebox.innerHTML = `<div class="tslots"><div class="tslot">${this.slotHTML(st, 'data-e')}<small>Pièce</small></div></div>`;
       let html = '';
       if (st && !bio) html = '<div class="muted">Seule une armure bionique reçoit des modules.</div>';
@@ -356,7 +369,7 @@ export class UI {
         for (const [k, mod] of Object.entries(MODS)) {
           if (mod.slot !== ITEMS[st.id].armor.slot) continue;
           const on = st.m?.includes(k), have = this.inv.count(mod.item) > 0, ok = !on && !full && have;
-          html += `<div class="recipe${ok ? '' : ' off'}" ${ok ? `data-o="${k}"` : ''}><img src="${this.icons[mod.item].url}" alt=""><div class="rname">${mod.name}<small>${mod.tip}</small></div><div class="ings"><span class="ing${on || have ? '' : ' miss'}">${on ? 'installé' : have ? 'installer' : 'module manquant'}</span></div></div>`;
+          html += `<div class="recipe${ok || on ? '' : ' off'}" ${on ? `data-u="${k}"` : ok ? `data-o="${k}"` : ''}><img src="${this.icons[mod.item].url}" alt=""><div class="rname">${mod.name}<small>${mod.tip}</small></div><div class="ings"><span class="ing${on || have ? '' : ' miss'}">${on ? 'installé · retirer' : have ? 'installer' : 'module manquant'}</span></div></div>`;
         }
       }
       this.el.recipes.innerHTML = html;
@@ -428,12 +441,12 @@ export class UI {
         html += `<div class="tslot">${this.slotHTML(st.slots[i], `data-t="${i}"`)}<small>${SLOT_LABEL[kind]}</small></div>`;
       });
       html += '</div>';
-      if (def.recipes) html += this.bar('Avancement', st.max ? st.prog / st.max : 0);
+      if (def.recipes || def.distill) html += this.bar('Avancement', st.max ? st.prog / st.max : 0);
       if (def.beacon) html += this.bar(st.lit ? 'Allumé pour toujours' : `Allumage : ${Math.round(((st.prog ?? 0) / def.beacon) * 100)} %`, st.lit ? 1 : (st.prog ?? 0) / def.beacon, 'hot');
       if (def.slots.includes('fuel') || def.slots.includes('rod')) html += this.bar(def.slots.includes('rod') ? 'Barre en cours' : 'Flamme', st.burnMax ? st.burn / st.burnMax : 0, 'hot');
       if (def.store) html += this.bar(`Charge : ${Math.round(st.e)} / ${def.store} J`, st.e / def.store, 'elec');
       if (def.drawer) html += this.bar(`${fmt(st.slots[0]?.n ?? 0)} / ${fmt(def.drawer)} objets`, (st.slots[0]?.n ?? 0) / def.drawer);
-      if (def.tank) html += this.bar(st.f?.amt > 0 ? `${FLUID_NAME[st.f.id]} : ${fmt(st.f.amt)} / ${fmt(def.tank)} L` : `Vide (${fmt(def.tank)} L)`, (st.f?.amt ?? 0) / def.tank, st.f?.id === B.LAVA ? 'hot' : 'elec');
+      if (def.tank) html += this.bar(st.f?.amt > 0 ? `${FLUID_NAME[st.f.id]} : ${fmt(st.f.amt)} / ${fmt(def.tank)} L` : `Vide (${fmt(def.tank)} L)`, (st.f?.amt ?? 0) / def.tank, st.f?.id === B.LAVA || st.f?.id === F_FUEL ? 'hot' : 'elec');
       const s0 = st.slots[0], ch = def.slots[0] === 'charge' && s0 && ITEMS[s0.id].charge;
       if (ch) html += this.bar(`Charge de l'objet : ${Math.round(((s0.c ?? 0) / ch.max) * 100)} %`, (s0.c ?? 0) / ch.max, 'elec');
       const lines = [];

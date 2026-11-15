@@ -224,6 +224,14 @@ const BUILD = {
       beam.visible = sky.visible = lit; beam.rotation.y = s.t * 0.8;
     } };
   },
+  [B.ALLOY]: (k) => {
+    const hot = [k.glow(6, 4, 0.3, T.M_HOT, 8, 6.5, 0.85), k.glow(6, 4, 0.3, T.M_HOT, 8, 6.5, 15.15), k.glow(2.6, 0.4, 2.6, T.M_HOT, 11.5, 12.2, 4.5)], smoke = k.smoke(11.5, 12.5, 4.5);
+    return { sound: 'fire', update: (s) => { for (const m of hot) flick(m, s); smoke(s); } };
+  },
+  [B.CANNER]: (k) => {
+    const can = k.lit(2.4, 4, 2.4, T.M_STEEL, 8, 7, 8), nozzle = k.lit(1.2, 2, 1.2, T.M_DARK, 8, 9.5, 8), drop = k.glow(0.8, 2.6, 0.8, T.M_HOT, 8, 9, 8);
+    return { sound: 'hum', update: (s) => { const c = frac(s.ph / 3); can.visible = s.lv > 0.04; can.position.x = (2.5 + 11 * c) * U; nozzle.position.y = (9.6 - (c > 0.4 && c < 0.6 ? 0.8 : 0)) * U; drop.visible = s.act && c > 0.4 && c < 0.6; } };
+  },
   [B.COMPRESSOR]: (k) => {
     const press = k.lit(9, 3, 9, T.M_STEEL, 8, 12, 8), rod = k.lit(2.4, 5, 2.4, T.M_DARK, 8, 13, 8), cube = k.lit(3, 2, 3, T.M_BLACK, 8, 8, 8);
     return { sound: 'hum', update: (s) => { const d = Math.pow(Math.abs(Math.sin(s.ph * 3)), 4); press.position.y = (12.4 - 3.4 * d) * U; rod.position.y = (13.6 - 1.7 * d) * U; cube.visible = s.lv > 0.04; } };

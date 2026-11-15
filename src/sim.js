@@ -1,7 +1,7 @@
 // Simulation partagée (navigateur en solo, serveur en multijoueur) :
 // conteneurs, machines, réseau électrique, tuyaux à objets et à fluides.
 // Aucun accès au DOM ni à Three.js.
-import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW } from './items.js';
+import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW, F_FUEL } from './items.js';
 
 const rec = (ins, out, time) => ({ ins, out, time });
 
@@ -29,13 +29,13 @@ const PRINT = [
   rec([[I.PLATE, 3], [I.CIRCUIT, 2], [B.CRYSTAL, 2]], [I.PULSE, 1], 14),
   rec([[I.CELL, 1], [B.CRYSTAL, 3], [I.EMBER_SHARD, 2]], [I.PLASMA, 1], 14),
   rec([[I.PLATE, 4], [I.CELL, 2], [I.EMBER_SHARD, 2]], [I.JETPACK, 1], 18),
-  rec([[I.COMPOSITE, 4], [I.ROD, 1], [I.EMBER_SHARD, 4]], [I.ENGINE, 1], 20),
-  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [B.CRYSTAL, 2]], [I.MOD_NIGHT, 1], 12),
-  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.OXY, 4]], [I.MOD_AIR, 1], 12),
-  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.IRON, 8]], [I.MOD_MAGNET, 1], 12),
-  rec([[I.TITAN, 2], [I.CIRCUIT, 2], [I.STAR, 1]], [I.MOD_SHIELD, 1], 12),
-  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.FEATHER, 8]], [I.MOD_SPEED, 1], 12),
-  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.JELLY, 6]], [I.MOD_SPRING, 1], 12),
+  rec([[I.STEEL, 4], [I.ROD, 1], [I.EMBER_SHARD, 4]], [I.ENGINE, 1], 20),
+  rec([[I.TITAN, 1], [I.ELECTRUM, 2], [B.CRYSTAL, 2]], [I.MOD_NIGHT, 1], 12),
+  rec([[I.TITAN, 1], [I.ELECTRUM, 2], [I.OXY, 4]], [I.MOD_AIR, 1], 12),
+  rec([[I.TITAN, 1], [I.ELECTRUM, 2], [I.IRON, 8]], [I.MOD_MAGNET, 1], 12),
+  rec([[I.TITAN, 2], [I.ELECTRUM, 2], [I.STAR, 1]], [I.MOD_SHIELD, 1], 12),
+  rec([[I.TITAN, 1], [I.ELECTRUM, 2], [I.FEATHER, 8]], [I.MOD_SPEED, 1], 12),
+  rec([[I.TITAN, 1], [I.ELECTRUM, 2], [I.JELLY, 6]], [I.MOD_SPRING, 1], 12),
   rec([[B.URANITE, 2], [I.PLATE, 1]], [I.ROD, 1], 10),
   rec([[I.PLATE, 1], [I.WIRE, 2], [B.CRYSTAL, 1]], [I.CIRCUIT, 2], 6),
   rec([[I.PLATE, 1], [I.WIRE, 2], [I.COAL, 2]], [I.CELL, 1], 6),
@@ -56,8 +56,13 @@ const COMPRESS = [
   rec([[I.PLATE, 2], [I.CARBON, 1]], [I.COMPOSITE, 1], 6),
   rec([[I.COAL, 4]], [I.CARBON, 1], 5),
 ];
-const REFINE = [
-  rec([[I.COAL, 2]], [I.FUEL, 1], 8),
+// Deux métaux fondus ensemble.
+const ALLOYS = [
+  rec([[I.IRON, 2], [I.CARBON, 1]], [I.STEEL, 2], 8),
+  rec([[I.COPPER, 2], [B.CRYSTAL, 1]], [I.ELECTRUM, 2], 8),
+];
+const CAN = [
+  rec([[I.CAN, 1]], [I.FUEL, 1], 3),
 ];
 const FUSE = [
   rec([[I.EMBER_SHARD, 2], [B.CRYSTAL, 2], [B.URANITE, 1]], [I.STAR, 1], 20),
@@ -87,7 +92,9 @@ export const MACHINES = {
   [B.BATTERY]: { slots: [], store: 20000, hint: 'Stocke le surplus et le rend quand la production manque.' },
   [B.CORE]: { slots: ['rod'], gen: 400, hint: "Le cœur va au centre d'un cube de 3×3×3 : 26 blindages l'entourent de tous côtés, coins compris. Une barre d'uranium y brûle 15 minutes. Le courant sort par un câble collé à un blindage ; un clic droit sur un blindage ouvre le cœur." },
   [B.COMPRESSOR]: { slots: ['in', 'in', 'out'], recipes: COMPRESS, power: 45, hint: 'Presse le charbon en carbone, puis carbone et plaques en composite : léger, solide, bon pour voler loin.' },
-  [B.REFINERY]: { slots: ['in', 'out'], recipes: REFINE, power: 60, tank: 4000, fluid: B.LAVA, fluidUse: 500, hint: 'Distille du charbon à la chaleur de la lave : du carburant pour la fusée.' },
+  [B.REFINERY]: { slots: ['in'], distill: { id: I.COAL, amt: 250, time: 4 }, power: 60, tank: 4000, hint: "Distille le charbon en carburant liquide (250 L par charbon). Un tuyau à fluides, ou une embouteilleuse collée contre elle, l'emporte." },
+  [B.CANNER]: { slots: ['in', 'out'], recipes: CAN, power: 20, tank: 4000, fluid: F_FUEL, fluidUse: 500, hint: 'Remplit les bidons vides de carburant : 500 L par bidon.' },
+  [B.ALLOY]: { slots: ['in', 'in', 'out'], recipes: ALLOYS, power: 50, hint: "Fond deux matières ensemble : fer et carbone donnent l'acier, cuivre et cristal l'électrum." },
   [B.ELECTRO]: { slots: ['out'], makes: [I.OXY, 1], time: 8, power: 60, tank: 4000, fluid: B.WATER, fluidUse: 500, hint: "Tire de l'oxygène de l'eau, en cartouches. Indispensable dans l'Éther sans respirateur." },
   [B.CONDENSER]: { slots: ['out'], makes: [I.DUST, 1], time: 10, power: 150, hint: "Tire de la poussière d'orage de l'air. Gourmand : 150 W." },
   [B.FORGE]: { slots: ['in', 'in', 'in', 'out'], recipes: FUSE, power: 300, hint: "Fond braise, cristal et uranite en alliage stellaire. Il lui faut 300 W : c'est un travail pour un réacteur." },
@@ -95,7 +102,7 @@ export const MACHINES = {
 };
 // Tout ce qui se fait dans une machine, pour le guide de l'écran de fabrication : { where, ins, out, time }.
 export const GUIDE = [];
-for (const [id, list] of [[B.FURNACE, SMELT], [B.CNC, MILL], [B.WASHER, WASH], [B.PRINTER, PRINT], [B.COMPRESSOR, COMPRESS], [B.REFINERY, REFINE], [B.FORGE, FUSE]]) for (const r of list) GUIDE.push({ where: id, ins: r.ins, out: r.out, time: r.time });
+for (const [id, list] of [[B.FURNACE, SMELT], [B.CNC, MILL], [B.WASHER, WASH], [B.PRINTER, PRINT], [B.COMPRESSOR, COMPRESS], [B.ALLOY, ALLOYS], [B.CANNER, CAN], [B.FORGE, FUSE]]) for (const r of list) GUIDE.push({ where: id, ins: r.ins, out: r.out, time: r.time });
 for (const id in SEEDS) GUIDE.push({ where: B.GROWER, ins: [[+id, 1]], out: [SEEDS[id][0], SEEDS[id][1]], time: SEEDS[id][2], keep: true });
 GUIDE.push({ where: B.STONER, ins: [], out: [B.STONE, 1], time: 2 }, { where: B.CONDENSER, ins: [], out: [I.DUST, 1], time: 10 }, { where: B.ELECTRO, ins: [], out: [I.OXY, 1], time: 8 });
 export const GEN = { [B.TURBINE]: 8, [B.SOLAR]: 12, [B.GENERATOR]: 40, [B.LAVA_GEN]: 120, [B.CORE]: 400 };
@@ -116,7 +123,7 @@ export function connects(pipe, id) {
 const DRAW = { [B.LAMP]: 1, [B.FAN]: 5, [B.TURRET]: 5, [B.TNT]: 0 };
 // Câbles, générateurs et machines conduisent ; lampes, ventilateurs, tourelles et poudrières sont en bout de ligne.
 const CONDUCT = new Set([B.CABLE, B.CASING, B.BATTERY, B.TURBINE, B.SOLAR, B.GENERATOR, B.LAVA_GEN, B.CORE,
-  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO]);
+  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER]);
 const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, ...Object.keys(GROW).map(Number)]);
 
 export const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -231,7 +238,7 @@ export class Sim {
     if (MACHINES[id] && !D.tiles.has(k)) {
       const t = this.newTile(id);
       const f = meta?.f;
-      if (id === B.TANK && f && (f.id === B.WATER || f.id === B.LAVA) && f.amt > 0) t.f = { id: f.id, amt: Math.min(MACHINES[id].tank, f.amt) };
+      if (id === B.TANK && f && (f.id === B.WATER || f.id === B.LAVA || f.id === F_FUEL) && f.amt > 0) t.f = { id: f.id, amt: Math.min(MACHINES[id].tank, f.amt) };
       if (id === B.PUMP) t.src = meta?.src === B.WATER || meta?.src === B.LAVA ? meta.src : 0;
       D.tiles.set(k, t);
     }
@@ -319,6 +326,7 @@ export class Sim {
   // Un tuyau est plus difficile qu'une main : il ne remplit que ce qui sert à la machine.
   pipeAccepts(tile, slot, st) {
     const def = MACHINES[tile.id];
+    if (def.distill) return st.id === def.distill.id;
     if (def.slots[slot] === 'in') return !!def.recipes?.some((r) => r.ins.some(([id]) => id === st.id));
     return this.accepts(tile, slot, st);
   }
@@ -361,7 +369,7 @@ export class Sim {
     if (!def?.tank) return null;
     const f = tile.f, fluid = ITEMS[bucketId]?.fluid;
     if (bucketId === I.BUCKET) {
-      if (!f || f.amt < BUCKET) return null;
+      if (!f || f.amt < BUCKET || (f.id !== B.WATER && f.id !== B.LAVA)) return null; // le carburant se met en bidon, pas en seau
       f.amt -= BUCKET;
       return f.id === B.LAVA ? I.BUCKET_LAVA : I.BUCKET_WATER;
     }
@@ -411,6 +419,7 @@ export class Sim {
     if (def.slots[0] === 'charge') { const s = tile.slots[0], ch = s && ITEMS[s.id].charge; return !!ch && (s.c ?? 0) < ch.max; }
     if (def.pump) return !!tile.src && (tile.f?.amt ?? 0) < def.tank;
     if (def.beacon) return !tile.lit;
+    if (def.distill) return tile.slots[0]?.id === def.distill.id && (tile.f?.amt ?? 0) + def.distill.amt <= def.tank;
     return !!this.plan(tile, def);
   }
 
@@ -430,6 +439,14 @@ export class Sim {
       tile.max = def.beacon;
       tile.prog = Math.max(0, tile.prog + (dt >= full * 0.95 ? dt : -full));
       if (tile.prog >= def.beacon) tile.lit = true;
+      return;
+    }
+    if (def.distill) {
+      tile.max = def.distill.time;
+      if ((tile.prog += dt) < def.distill.time) return;
+      tile.prog = 0;
+      if (--tile.slots[0].n <= 0) tile.slots[0] = null;
+      tile.f = { id: F_FUEL, amt: (tile.f?.amt ?? 0) + def.distill.amt };
       return;
     }
     const p = this.plan(tile, def);
@@ -658,7 +675,7 @@ export class Sim {
     }
     // Une pompe remplit aussi directement ce qui est collé à elle.
     for (const b of D.blocks.values()) {
-      if (b.id !== B.PUMP) continue;
+      if (b.id !== B.PUMP && b.id !== B.REFINERY) continue;
       const src = D.tiles.get(key(b.x, b.y, b.z));
       if (!(src?.f?.amt > 0)) continue;
       for (const [dx, dy, dz] of N6) { const dst = D.tiles.get(key(b.x + dx, b.y + dy, b.z + dz)); if (dst) this.moveFluid(src, dst, 1000); }

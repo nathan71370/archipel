@@ -13,7 +13,7 @@ export const B = {
   SAND: 80, SANDSTONE: 81, CACTUS: 82, ICE: 83, PINE_LEAVES: 84, STONE_BRICK: 85, GLASS: 86, LANTERN: 87,
   FORGE: 88, CONDENSER: 89, LIGHTHOUSE: 90, FARMLAND: 91, CROP1: 92, CROP2: 93, CROP3: 94,
   TORCH: 95, HAMMOCK: 96, BOUNCE: 97, MOONDUST: 98, MOONROCK: 99, TITAN_ORE: 60,
-  COMPRESSOR: 68, REFINERY: 69, ELECTRO: 70, ROCKET: 78, MODBENCH: 79,
+  COMPRESSOR: 68, REFINERY: 69, ELECTRO: 70, ROCKET: 78, MODBENCH: 79, ALLOY: 207, CANNER: 208,
   ORE_CROP: 210, // 210 à 221 : pousse puis plant mûr de chacun des six germes de minerai
 };
 // Blocs pleins mais qui laissent passer la vue et la lumière.
@@ -36,8 +36,10 @@ export const I = {
   STAR: 199, SEEDS: 200, WHEAT: 201, BREAD: 202, PIE: 203, HOE: 204, JELLY: 205, SOUP: 206,
   GLIDER1: 222, GLIDER2: 223, GLIDER3: 224, GLIDER4: 241, CARBON: 225, COMPOSITE: 226, FUEL: 227, OXY: 228, TITAN: 229,
   BIO_HELM: 230, BIO_CHEST: 231, BIO_LEGS: 232, BIO_BOOTS: 233,
-  MOD_NIGHT: 234, MOD_AIR: 235, MOD_MAGNET: 236, MOD_SHIELD: 237, MOD_SPEED: 238, MOD_SPRING: 239, ENGINE: 240,
+  MOD_NIGHT: 234, MOD_AIR: 235, MOD_MAGNET: 236, MOD_SHIELD: 237, MOD_SPEED: 238, MOD_SPRING: 239, ENGINE: 240, STEEL: 242, ELECTRUM: 243, CAN: 244,
 };
+// Carburant : un liquide qui n'existe que dans les réservoirs et les tuyaux (ce n'est pas un bloc).
+export const F_FUEL = 300;
 
 // hard = secondes à mains nues ; tool = outil adapté ; tier = palier minimal pour récolter.
 const blk = (name, top, side, bottom, hard, tool = null, tier = 0, extra = {}) => ({ name, top, side, bottom, hard, tool, tier, ...extra });
@@ -128,6 +130,8 @@ BLOCKS[B.MOONDUST] = all("Poussière d'éther", T.MOONDUST, 0.5, 'shovel');
 BLOCKS[B.MOONROCK] = all("Roche d'éther", T.MOONROCK, 3, 'pick', 2);
 BLOCKS[B.TITAN_ORE] = all('Minerai de titane', T.TITAN_ORE, 4.2, 'pick', 4);
 BLOCKS[B.COMPRESSOR] = blk('Compresseur', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
+BLOCKS[B.ALLOY] = blk("Fonderie d'alliages", T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
+BLOCKS[B.CANNER] = blk('Embouteilleuse', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
 BLOCKS[B.REFINERY] = blk('Raffinerie', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
 BLOCKS[B.ELECTRO] = blk('Électrolyseur', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
 BLOCKS[B.ROCKET] = blk('Fusée', T.M_WHITE, T.M_WHITE, T.M_DARK, 3, 'pick');
@@ -152,7 +156,7 @@ ORE_CROPS.forEach((c, k) => { GROW[B.ORE_CROP + k * 2] = [B.ORE_CROP + k * 2 + 1
 
 export const ELECTRIC = new Set([B.CABLE, B.TURBINE, B.LAMP, B.FAN, B.TURRET, B.TNT,
   B.E_FURNACE, B.GENERATOR, B.SOLAR, B.BATTERY, B.CNC, B.PRINTER, B.CHARGER, B.CORE, B.CASING,
-  B.PUMP, B.STONER, B.GROWER, B.WASHER, B.LAVA_GEN, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO]);
+  B.PUMP, B.STONER, B.GROWER, B.WASHER, B.LAVA_GEN, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER]);
 // Blocs qu'on traverse en marchant (cultures, torches).
 export const PASS = new Set();
 BLOCKS.forEach((def, id) => { if (def?.pass) PASS.add(id); });
@@ -256,6 +260,9 @@ Object.assign(ITEMS, {
   [I.GLIDER4]: { name: 'Aile de titane', shape: 'wing', color: 0xbfd4ff, stack: 1, glide: { speed: 19, sink: 0.6, tier: 4 } },
   [I.CARBON]: { name: 'Carbone compressé', shape: 'lump', color: 0x2a2c36, stack: 99 },
   [I.COMPOSITE]: { name: 'Plaque composite', shape: 'plate', color: 0x4a4f63, stack: 99 },
+  [I.STEEL]: { name: "Lingot d'acier", shape: 'ingot', color: 0x7c8496, stack: 99 },
+  [I.ELECTRUM]: { name: "Lingot d'électrum", shape: 'ingot', color: 0xb8f0c8, stack: 99 },
+  [I.CAN]: { name: 'Bidon vide', shape: 'cell', color: 0xc7ccd9, stack: 16 },
   [I.FUEL]: { name: 'Bidon de carburant', shape: 'cell', color: 0xff8a3d, stack: 16 },
   [I.OXY]: { name: "Cartouche d'oxygène", shape: 'cell', color: 0x7ef0ff, stack: 16 },
   [I.TITAN]: { name: 'Lingot de titane', shape: 'ingot', color: 0xbfd4ff, stack: 99 },
@@ -332,12 +339,15 @@ R('Exploration', I.GLIDER4, 1, [[I.GLIDER3, 1], [I.TITAN, 4]], 'bench');
 R('Machines', B.COMPRESSOR, 1, [[I.PLATE, 6], [I.IRON, 4], [I.CIRCUIT, 2]], 'bench');
 R('Machines', B.REFINERY, 1, [[I.PLATE, 6], [I.COPPER, 4], [I.CIRCUIT, 3], [I.BUCKET, 1]], 'bench');
 R('Machines', B.ELECTRO, 1, [[I.PLATE, 4], [I.CIRCUIT, 3], [I.CELL, 1], [B.GLASS, 2]], 'bench');
-R('Machines', B.MODBENCH, 1, [[I.TITAN, 4], [I.COMPOSITE, 4], [I.CIRCUIT, 4]], 'bench');
-R('Exploration', B.ROCKET, 1, [[I.COMPOSITE, 12], [I.ENGINE, 1], [I.CIRCUIT, 8], [B.GLASS, 2]], 'bench');
-R('Armures', I.BIO_HELM, 1, [[I.TITAN, 5], [I.COMPOSITE, 2], [I.CIRCUIT, 2]], 'bench');
-R('Armures', I.BIO_CHEST, 1, [[I.TITAN, 8], [I.COMPOSITE, 4], [I.CIRCUIT, 3]], 'bench');
-R('Armures', I.BIO_LEGS, 1, [[I.TITAN, 7], [I.COMPOSITE, 3], [I.CIRCUIT, 2]], 'bench');
-R('Armures', I.BIO_BOOTS, 1, [[I.TITAN, 4], [I.COMPOSITE, 2], [I.CIRCUIT, 2]], 'bench');
+R('Machines', B.MODBENCH, 1, [[I.TITAN, 4], [I.STEEL, 4], [I.ELECTRUM, 4]], 'bench');
+R('Machines', B.ALLOY, 1, [[B.FURNACE, 1], [I.PLATE, 6], [I.CIRCUIT, 2]], 'bench');
+R('Machines', B.CANNER, 1, [[I.PLATE, 4], [I.CIRCUIT, 2], [B.FLUID_PIPE, 2]], 'bench');
+R('Logistique', I.CAN, 2, [[I.PLATE, 1]], 'bench');
+R('Exploration', B.ROCKET, 1, [[I.COMPOSITE, 8], [I.STEEL, 8], [I.ENGINE, 1], [I.CIRCUIT, 8]], 'bench');
+R('Armures', I.BIO_HELM, 1, [[I.TITAN, 5], [I.COMPOSITE, 2], [I.ELECTRUM, 2]], 'bench');
+R('Armures', I.BIO_CHEST, 1, [[I.TITAN, 8], [I.COMPOSITE, 4], [I.ELECTRUM, 3]], 'bench');
+R('Armures', I.BIO_LEGS, 1, [[I.TITAN, 7], [I.COMPOSITE, 3], [I.ELECTRUM, 2]], 'bench');
+R('Armures', I.BIO_BOOTS, 1, [[I.TITAN, 4], [I.COMPOSITE, 2], [I.ELECTRUM, 2]], 'bench');
 R('Bases', I.HOE, 1, [[I.IRON, 2], [I.STICK, 2]], 'bench');
 R('Bases', I.BREAD, 1, [[I.WHEAT, 3]]);
 R('Bases', I.SOUP, 1, [[I.MUSHROOM, 3]]);
