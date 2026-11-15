@@ -44,7 +44,7 @@ export class Drops {
       o.delay -= dt;
       if (o.delay <= 0 && !o.pending) {
         const dx = player.pos.x - o.pos.x, dy = player.pos.y + 0.9 - o.pos.y, dz = player.pos.z - o.pos.z;
-        if (dx * dx + dy * dy + dz * dz < 2.4) onPick(o);
+        if (dx * dx + dy * dy + dz * dz < (player.pickR2 ?? 2.4)) onPick(o);
       }
     }
   }

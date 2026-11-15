@@ -17,7 +17,7 @@ const NAMES = [
   'STONE_BRICK', 'GLASS', 'LANTERN',
   // Matières unies des modèles de machines
   'M_DARK', 'M_STEEL', 'M_COPPER', 'M_BLACK', 'M_HOT', 'M_CYAN', 'M_GREEN', 'M_RED', 'M_BLUE', 'M_GLASS', 'M_GRILL', 'M_WHITE', 'M_GOLD', 'M_VIOLET',
-  'FORGE', 'CONDENSER', 'FARMLAND', 'CROP', 'CROP_RIPE', 'M_ORANGE', 'JELLY',
+  'FORGE', 'CONDENSER', 'FARMLAND', 'CROP', 'CROP_RIPE', 'M_ORANGE', 'JELLY', 'MOONDUST', 'MOONROCK', 'TITAN_ORE',
 ];
 export const T = Object.fromEntries(NAMES.map((n, i) => [n, i]));
 
@@ -404,6 +404,10 @@ export function makeAtlas() {
     if (x >= 3 && x <= 12 && y >= 3 && y <= 12) return (x + (y >> 1)) % 4 === 0 ? hex(0xeafcff) : mix(hex(0x1c2a55), hex(0x4f7fd9), r());
   }));
   paint(T.JELLY, (x, y, r) => ((x === 0 || y === 0 || x === 15 || y === 15) ? hex(0x2f9e6b) : mix(hex(0x5fe39a), hex(0xbfffe0), ((x * 3 + y * 5) % 9 === 0 ? 0.8 : r() * 0.25))));
+  const moon = (x, y, r) => { const v = r(); return v > 0.92 ? hex(0x4f5468) : mul(hex(0x7b8096), 0.88 + r() * 0.2); };
+  paint(T.MOONDUST, (x, y, r) => mul(hex(0xb9bccb), 0.9 + r() * 0.16));
+  paint(T.MOONROCK, moon);
+  paint(T.TITAN_ORE, ore(moon, hex(0xbfd4ff)));
   paint(T.FARMLAND, (x, y, r) => mul(DIRT, (y % 4 < 2 ? 0.62 : 0.8) + r() * 0.1));
   paint(T.CROP, (x, y, r) => mul(hex(0x6fd16a), 0.8 + r() * 0.3));
   paint(T.CROP_RIPE, (x, y, r) => mul(hex(0xf0c94a), 0.8 + r() * 0.3));

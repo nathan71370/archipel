@@ -224,6 +224,18 @@ const BUILD = {
       beam.visible = sky.visible = lit; beam.rotation.y = s.t * 0.8;
     } };
   },
+  [B.COMPRESSOR]: (k) => {
+    const press = k.lit(9, 3, 9, T.M_STEEL, 8, 12, 8), rod = k.lit(2.4, 5, 2.4, T.M_DARK, 8, 13, 8), cube = k.lit(3, 2, 3, T.M_BLACK, 8, 8, 8);
+    return { sound: 'hum', update: (s) => { const d = Math.pow(Math.abs(Math.sin(s.ph * 3)), 4); press.position.y = (12.4 - 3.4 * d) * U; rod.position.y = (13.6 - 1.7 * d) * U; cube.visible = s.lv > 0.04; } };
+  },
+  [B.REFINERY]: (k) => {
+    const hot = [k.glow(5, 4, 0.3, T.M_HOT, 5, 7, 0.85), k.glow(5, 4, 0.3, T.M_HOT, 5, 7, 15.15)], flame = k.glow(2, 3, 2, T.M_HOT, 12.5, 21.5, 5), smoke = k.smoke(12.5, 22, 5);
+    return { sound: 'fire', update: (s) => { for (const m of hot) flick(m, s); flick(flame, s, 23); smoke(s); } };
+  },
+  [B.ELECTRO]: (k) => {
+    const a = k.glow(3.6, 8, 3.6, T.M_CYAN, 4.5, 9, 4.5), b = k.glow(3.6, 8, 3.6, T.M_WHITE, 11.5, 9, 11.5);
+    return { sound: 'hum', update: (s) => { a.visible = b.visible = s.lv > 0.04; a.scale.y = 0.5 + 0.5 * Math.abs(Math.sin(s.ph * 2)); b.scale.y = 0.5 + 0.5 * Math.abs(Math.cos(s.ph * 2)); } };
+  },
   [B.TERMINAL]: (k) => {
     const cube = k.glow(2.6, 2.6, 2.6, T.M_CYAN, 8, 20, 8);
     cube.visible = true;

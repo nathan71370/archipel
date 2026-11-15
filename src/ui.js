@@ -1,4 +1,4 @@
-import { B, BLOCKS, ITEMS, RECIPES, STATIONS, CATS, ARMOR_SLOTS, ENCHANTS, ELECTRIC, enchantsFor } from './items.js';
+import { B, BLOCKS, ITEMS, RECIPES, STATIONS, CATS, ARMOR_SLOTS, ENCHANTS, ELECTRIC, MODS, MOD_SLOTS, enchantsFor } from './items.js';
 import { MACHINES, GEN, GUIDE } from './sim.js';
 
 const $ = (id) => document.getElementById(id);
@@ -26,6 +26,13 @@ const NOTES = [
     "4. Clic droit sur n'importe quel blindage pour ouvrir le cœur, et dépose une barre : elle brûle 15 minutes.",
     "5. Colle un câble contre un blindage : le courant sort par là.",
     "Attention : si un blindage disparaît pendant qu'une barre brûle, le cœur fond et explose en 10 secondes.",
+  ] },
+  { title: "L'Éther : fusée, oxygène, titane", icon: B.ROCKET, find: 'fusee ether espace titane oxygene carburant planete monde asteroide bionique', steps: [
+    "1. Compresseur : charbon → carbone, puis carbone + plaques → plaques composites.",
+    "2. Raffinerie (charbon + lave) : bidons de carburant. Il en faut 4 par décollage : emporte de quoi revenir.",
+    "3. Imprime un moteur-fusée, fabrique la fusée, pose-la à ciel ouvert et clic droit pour partir.",
+    "4. Dans l'Éther il n'y a pas d'air : le planeur ne porte pas (réacteur dorsal ou ailes de braise), et il faut des cartouches d'oxygène (électrolyseur) ou un respirateur.",
+    "5. On y trouve le titane : aile de titane, armure bionique et ses modules. Les panneaux solaires y donnent le double, sans nuit.",
   ] },
   { title: 'Germes de minerai', icon: 184, find: 'germe minerai planter cultivateur graine pousse', steps: [
     "Un germe s'obtient à l'imprimante 3D (8 minerais + 1 circuit) ou auprès des villageois.",
@@ -65,7 +72,7 @@ export class UI {
       if (pal) { this.takeCreative(+pal.dataset.q, e.button, e.shiftKey); this.refresh(); return; }
       if (c) { this.cat = c.dataset.c; this.el.recipes.scrollTop = 0; this.render(); return; }
       if (g) { this.clickTerminal(g.dataset.g === 'put' ? null : +g.dataset.g, e.button, e.shiftKey); return; }
-      if (o) { this.enchant(o.dataset.o); this.refresh(); return; }
+      if (o) { if (this.altar === 'mods') this.install(o.dataset.o); else this.enchant(o.dataset.o); this.refresh(); return; }
       if (d) { this.buy(this.trade.offers[+d.dataset.d]); this.refresh(); return; }
       if (e.target.closest('[data-e]')) { const cur = this.altarItem; this.altarItem = this.held; this.held = cur; this.refresh(); return; }
       if (s) { if (e.shiftKey && this.tile) this.quickStore(+s.dataset.i); else this.click(this.inv.slots, +s.dataset.i, e.button, null); }
@@ -101,6 +108,7 @@ export class UI {
       title = ITEMS[s.id].name;
       if (s.e) title += ' — ' + enchantText(s);
       if (s.f) title += ` — ${FLUID_NAME[s.f.id]} ${fmt(s.f.amt)} L`;
+      if (s.m?.length) title += ' — modules : ' + s.m.map((k) => MODS[k].name).join(', ');
     }
     return `<div class="slot${s ? '' : ' empty'}${s?.e ? ' ench' : ''}" ${attrs}${s ? ` title="${title}"` : ''}>${inner}</div>`;
   }
@@ -317,6 +325,15 @@ export class UI {
     st.e = { ...(st.e ?? {}), [k]: opt.next };
   }
 
+  // Atelier bionique : installe un module du sac sur la pièce posée.
+  install(k) {
+    const st = this.altarItem, mod = MODS[k];
+    if (!st || !mod || !ITEMS[st.id].bionic || ITEMS[st.id].armor.slot !== mod.slot || st.m?.includes(k) || (st.m?.length ?? 0) >= MOD_SLOTS || this.inv.count(mod.item) < 1) return;
+    this.inv.remove(mod.item, 1);
+    st.m = [...(st.m ?? []), k];
+    this.hooks.installed?.(mod);
+  }
+
   buy(offer) {
     const [cid, cn] = offer.cost;
     if (this.inv.count(cid) < cn) return;
@@ -326,6 +343,25 @@ export class UI {
 
   renderSide() {
     const icon = (id, n) => `<span class="ing${this.inv.count(id) < n ? ' miss' : ''}" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt="">${n}</span>`;
+    if (this.altar === 'mods') {
+      $('crafttitle').textContent = 'Atelier bionique';
+      const st = this.altarItem, bio = st && ITEMS[st.id].bionic;
+      this.el.stations.textContent = `Pose une pièce d'armure bionique : elle reçoit jusqu'à ${MOD_SLOTS} modules, imprimés à l'imprimante 3D.`;
+      this.el.tilebox.innerHTML = `<div class="tslots"><div class="tslot">${this.slotHTML(st, 'data-e')}<small>Pièce</small></div></div>`;
+      let html = '';
+      if (st && !bio) html = '<div class="muted">Seule une armure bionique reçoit des modules.</div>';
+      else if (st) {
+        const full = (st.m?.length ?? 0) >= MOD_SLOTS;
+        html = `<h3>Modules<span>${st.m?.length ?? 0} / ${MOD_SLOTS}</span></h3>`;
+        for (const [k, mod] of Object.entries(MODS)) {
+          if (mod.slot !== ITEMS[st.id].armor.slot) continue;
+          const on = st.m?.includes(k), have = this.inv.count(mod.item) > 0, ok = !on && !full && have;
+          html += `<div class="recipe${ok ? '' : ' off'}" ${ok ? `data-o="${k}"` : ''}><img src="${this.icons[mod.item].url}" alt=""><div class="rname">${mod.name}<small>${mod.tip}</small></div><div class="ings"><span class="ing${on || have ? '' : ' miss'}">${on ? 'installé' : have ? 'installer' : 'module manquant'}</span></div></div>`;
+        }
+      }
+      this.el.recipes.innerHTML = html;
+      return true;
+    }
     if (this.altar) {
       $('crafttitle').textContent = "Autel d'enchantement";
       const st = this.altarItem, level = this.hooks.level();

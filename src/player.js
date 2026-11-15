@@ -59,6 +59,9 @@ export class Player {
     this.sneaking = false;
     this.crouch = 0; // 0 debout, 1 accroupi (lissé pour la caméra)
     this.fly = false; // vol libre du mode créatif
+    this.glide = { speed: 9, sink: 1.5 }; // planeur du sac, ou null s'il n'y en a pas
+    this.gravityK = 1; // 0,3 dans l'Éther
+    this.speedK = 1; this.jumpK = 1; // modules bioniques
   }
 
   get eyeY() { return this.pos.y + EYE - this.crouch * 0.28; }
@@ -82,8 +85,8 @@ export class Player {
 
   // Espace : saut au sol, planeur en l'air.
   pressJump() {
-    if (this.onGround) { this.vel.y = JUMP; this.onGround = false; }
-    else this.gliding = !this.gliding;
+    if (this.onGround) { this.vel.y = JUMP * this.jumpK; this.onGround = false; }
+    else this.gliding = !this.gliding && !!this.glide;
   }
 
   // Renvoie la plus forte vitesse d'impact au sol pendant cette frame.
@@ -155,13 +158,14 @@ export class Player {
       if (d < 1.9 || this.pull.t <= 0 || (this.hitWall && d < 3)) { this.pull = null; v.y = Math.max(v.y, 7); }
       return Math.min(impactPull, 0);
     }
+    if (this.gliding && !this.glide) this.gliding = false;
     if (this.gliding) {
-      const dive = Math.max(0, -Math.sin(this.pitch));
-      const speed = 9 + dive * 9;
+      const dive = Math.max(0, -Math.sin(this.pitch)), gl = this.glide;
+      const speed = gl.speed * (1 + dive);
       const k = Math.min(1, 3 * dt);
       v.x += (fx * speed - v.x) * k;
       v.z += (fz * speed - v.z) * k;
-      const targetVy = this.inUpdraft ? 8 : -1.5 - dive * 10;
+      const targetVy = this.inUpdraft ? 8 : -gl.sink - dive * 10;
       v.y += (targetVy - v.y) * Math.min(1, 4 * dt);
     } else {
       let mx = 0, mz = 0;
@@ -170,7 +174,7 @@ export class Player {
       if (input.right) { mx += rx; mz += rz; }
       if (input.left) { mx -= rx; mz -= rz; }
       const len = Math.hypot(mx, mz);
-      const speed = this.sneaking ? SNEAK : input.run && this.hunger > 4 ? RUN : WALK;
+      const speed = (this.sneaking ? SNEAK : input.run && this.hunger > 4 ? RUN : WALK) * this.speedK;
       if (len > 0) { mx = (mx / len) * speed; mz = (mz / len) * speed; this.moving = true; }
       const k = Math.min(1, (this.onGround ? 14 : 3) * dt);
       v.x += (mx - v.x) * k;
@@ -181,9 +185,9 @@ export class Player {
         if (v.x && !collides(w, p.x + v.x * dt, p.y - 0.6, p.z, hw, 0.5)) v.x = 0;
         if (v.z && !collides(w, p.x + v.x * dt, p.y - 0.6, p.z + v.z * dt, hw, 0.5)) v.z = 0;
       }
-      v.y = Math.max(-50, v.y - GRAVITY * dt);
+      v.y = Math.max(-50, v.y - GRAVITY * this.gravityK * dt);
       if (input.jet) v.y += (8 - v.y) * Math.min(1, 6 * dt); // réacteur dorsal
-      if (input.jump && this.onGround) { v.y = JUMP; this.onGround = false; }
+      if (input.jump && this.onGround) { v.y = JUMP * this.jumpK; this.onGround = false; }
     }
 
     let impact = moveBody(this.world, this, dt);

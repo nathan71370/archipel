@@ -28,7 +28,8 @@ const LOAD_RADIUS = 6; // tronçons de terrain tenus en mémoire autour de chaqu
 // ---------- Monde partagé ----------
 let saved;
 try { saved = JSON.parse(fs.readFileSync(WORLD_FILE, 'utf8')); } catch { /* premier lancement */ }
-if (!saved?.seed || !Array.isArray(saved.edits?.[0])) saved = { id: crypto.randomUUID().slice(0, 8), seed: (Math.random() * 2 ** 31) | 0, time: 0.34, edits: [[], []] };
+if (!saved?.seed || !Array.isArray(saved.edits?.[0])) saved = { id: crypto.randomUUID().slice(0, 8), seed: (Math.random() * 2 ** 31) | 0, time: 0.34, edits: [[], [], []] };
+while (saved.edits.length < 3) saved.edits.push([]); // mondes ajoutés depuis : Ciel, Braise, Éther
 // Personnages : sac, position, journal de chaque joueur, retrouvés par son pseudo.
 const characters = saved.players && typeof saved.players === 'object' ? saved.players : {};
 const charKey = (name) => name.trim().toLowerCase();
@@ -67,7 +68,7 @@ function spawnDrop(d, x, y, z, s, centered = true) {
 setInterval(() => { const now = Date.now(); for (const [k, d] of drops) if (now - d.born > 300000) { drops.delete(k); broadcast({ t: 'gone', k }); } }, 15000);
 
 // ---------- Terrain, machines, liquides, créatures ----------
-const worlds = [0, 1].map((d) => { const w = new World(meta.seed, d, edits[d], null, null); w.headless = true; return w; });
+const worlds = [0, 1, 2].map((d) => { const w = new World(meta.seed, d, edits[d], null, null); w.headless = true; return w; });
 
 // Toute modification de bloc passe par ici : terrain du serveur, sauvegarde, joueurs, machines, liquides.
 function applySet(d, x, y, z, id, info, except) {
@@ -125,7 +126,7 @@ setInterval(() => {
   tickN++;
   meta.time = (meta.time + 0.05 / DAY_LENGTH) % 1;
   meta.clock += 0.05;
-  for (let d = 0; d < 2; d++) {
+  for (let d = 0; d < 3; d++) {
     const here = inDim(d);
     if (tickN % 10 === 0) {
       for (const p of here) worlds[d].loadAround(p.s[1], p.s[3], LOAD_RADIUS, 24);
@@ -145,7 +146,7 @@ setInterval(() => {
     const p = [];
     for (const o of players.values()) if (o.s) p.push([o.id, ...o.s]);
     broadcast({ t: 's', time: meta.time, c: Math.round(meta.clock * 10) / 10, p });
-    for (let d = 0; d < 2; d++) {
+    for (let d = 0; d < 3; d++) {
       const data = JSON.stringify({ t: 'm', d, r: mobs[d].rows() });
       for (const [ws, o] of players) if (o.s?.[0] === d && ws.readyState === 1) ws.send(data);
     }
@@ -157,7 +158,8 @@ setInterval(() => {
 }, 50);
 
 const validStack = (s) => s && ITEMS[s.id] && Number.isInteger(s.n) && s.n > 0 && s.n <= ITEMS[s.id].stack;
-const at = (m) => (m.d === 0 || m.d === 1) && int(m.x) && int(m.y) && int(m.z);
+const okDim = (d) => d === 0 || d === 1 || d === 2;
+const at = (m) => okDim(m.d) && int(m.x) && int(m.y) && int(m.z);
 const tileOf = (m) => (at(m) ? sim.dims[m.d].tiles.get(posKey(m.x, m.y, m.z)) : null);
 const sendTile = (ws, sub) => ws.send(JSON.stringify({ t: 'tile', d: sub.d, x: sub.x, y: sub.y, z: sub.z, st: sim.view(sub.d, sub.x, sub.y, sub.z) }));
 const reply = (ws, m, body) => ws.send(JSON.stringify({ t: 'tres', rid: m.rid, ...body }));
@@ -187,7 +189,7 @@ function onMessage(ws, raw) {
   if (!me) return;
   switch (m.t) {
     case 'pos':
-      if (Array.isArray(m.s) && m.s.length >= 8 && m.s.length <= 14 && m.s.every((v) => typeof v === 'number' && Number.isFinite(v)) && (m.s[0] === 0 || m.s[0] === 1)) me.s = m.s;
+      if (Array.isArray(m.s) && m.s.length >= 8 && m.s.length <= 14 && m.s.every((v) => typeof v === 'number' && Number.isFinite(v)) && okDim(m.s[0])) me.s = m.s;
       break;
     case 'set':
       if (at(m) && int(m.id) && m.id >= 0 && m.id < 256) {
@@ -207,7 +209,7 @@ function onMessage(ws, raw) {
       if (me.s && [m.x, m.y, m.z, m.r, m.dmg].every(Number.isFinite) && m.r <= 16 && m.dmg <= 40) mobs[me.s[0]].blast(m.x, m.y, m.z, m.r, m.dmg, me.id);
       break;
     case 'drop':
-      if ((m.d === 0 || m.d === 1) && validStack(m.s) && Array.isArray(m.p) && m.p.length === 3 && Array.isArray(m.v) && m.v.length === 3 && [...m.p, ...m.v].every(Number.isFinite)) {
+      if (okDim(m.d) && validStack(m.s) && Array.isArray(m.p) && m.p.length === 3 && Array.isArray(m.v) && m.v.length === 3 && [...m.p, ...m.v].every(Number.isFinite)) {
         const k = `p${me.id}-${dropSeq++}`;
         const drop = { k, d: m.d, p: m.p, v: m.v, s: m.s, born: Date.now() };
         drops.set(k, drop);

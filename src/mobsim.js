@@ -16,6 +16,7 @@ export const MOB = {
   cracheur: { name: 'Cracheur des dunes', hostile: true, nightOnly: true, ranged: { range: 13, dmg: 3, cd: 2.4 }, hw: 0.4, h: 0.9, hp: 14, speed: 2.4, dmg: 2, xp: 10, drops: [[I.CHITIN, 1, 2], [I.DUST, 0, 1]] },
   golem: { name: 'Golem de cendre', hostile: true, hw: 0.55, h: 2.5, hp: 70, speed: 1.9, dmg: 8, reach: 1.9, xp: 25, drops: [[I.EMBER_SHARD, 1, 2], [B.BASALT, 2, 4], [I.COIN, 0, 2]] },
   planeuse: { name: 'Planeuse', hostile: false, fly: true, hw: 0.6, h: 0.4, hp: 6, speed: 3.4, xp: 4, drops: [[I.FEATHER, 2, 4]] },
+  veilleur: { name: "Veilleur de l'Éther", hostile: true, hw: 0.32, h: 1.9, hp: 34, speed: 3.2, dmg: 6, xp: 20, drops: [[I.DUST, 1, 3], [B.CRYSTAL, 0, 1], [I.OXY, 0, 1]] },
   brandon: { name: 'Brandon', hostile: true, hw: 0.38, h: 2.0, hp: 26, speed: 3.6, dmg: 5, xp: 14, drops: [[I.EMBER_SHARD, 0, 1], [I.DUST, 1, 2]] },
 };
 
@@ -120,14 +121,14 @@ export class MobSim {
         }
       }
     }
-    const wantHostile = env.dim === 1 || env.night;
+    const wantHostile = env.dim >= 1 || env.night;
     if (wantHostile && this.hostileTimer <= 0 && this.count(true, P) < (env.dim === 1 ? 5 : 4)) {
       const g = this.findGround(P, 30, 58);
       const tooClose = g && env.players.some((p) => Math.hypot(p.pos.x - g.x, p.pos.z - g.z) < 24);
       if (g && !tooClose && g.ground !== B.LEAVES && g.ground !== B.BUSH && g.ground !== B.CAP && !w.villageNear(g.x, g.z, 34) && !env.safe(g.x, g.y, g.z)) {
         const cold = g.ground === B.SNOW || g.ground === B.ICE;
-        this.spawn(env.dim === 1 ? (Math.random() < 0.22 ? 'golem' : 'brandon') : cold ? 'givrelin' : g.ground === B.SAND ? 'cracheur' : 'rodeur', g.x + 0.5, g.y + 1, g.z + 0.5);
-        this.hostileTimer = env.dim === 1 ? 8 : 11;
+        this.spawn(env.dim === 2 ? 'veilleur' : env.dim === 1 ? (Math.random() < 0.22 ? 'golem' : 'brandon') : cold ? 'givrelin' : g.ground === B.SAND ? 'cracheur' : 'rodeur', g.x + 0.5, g.y + 1, g.z + 0.5);
+        this.hostileTimer = env.dim === 1 ? 8 : env.dim === 2 ? 14 : 11;
       }
     }
     // Gelées : de jour comme de nuit, mais seulement sur le mycélium des champignonnières.

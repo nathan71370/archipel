@@ -169,8 +169,12 @@ export class Sky {
     const dusk = Math.max(0, 1 - Math.abs(sunH) / 0.32);
     this.night = sunH < -0.08;
 
-    const ember = this.dim === 1;
-    if (ember) {
+    const ember = this.dim === 1, space = this.dim === 2;
+    if (space) {
+      // L'Éther : ciel noir, lumière dure et froide, ni nuages ni mer de brume.
+      this.color.setRGB(0.012, 0.014, 0.03);
+      this.tint.setRGB(0.8, 0.86, 1);
+    } else if (ember) {
       const pulse = 0.92 + 0.08 * Math.sin(performance.now() / 900);
       this.color.copy(EMBER_SKY);
       this.tint.copy(EMBER_TINT).multiplyScalar(pulse);
@@ -184,7 +188,9 @@ export class Sky {
     }
     // Météo
     this.clock += dt;
-    const wet = ember || this.biome === 6 ? 0 : this.wetAt(this.clock);
+    const wet = ember || space || this.biome === 6 ? 0 : this.wetAt(this.clock);
+    this.floor.visible = !space;
+    for (const l of this.layers) l.mesh.visible = !space;
     this.rain += (wet - this.rain) * Math.min(1, dt * 1.5);
     const snow = this.biome === 7;
     if (this.rain > 0.01) this.color.lerp(STORM, this.rain * 0.6 * day);
@@ -234,7 +240,8 @@ export class Sky {
     this.sunLight.position.set(tx + this.sunDir.x * 220, ty + this.sunDir.y * 220, tz + this.sunDir.z * 220);
     this.skyDome.position.copy(camera.position);
     this.dome.visible = !ember;
-    this.starMat.opacity = 1 - day;
+    this.starMat.opacity = space ? 1 : 1 - day;
+    if (space) { this.top.setRGB(0, 0, 0.01); this.sunLight.intensity = Math.PI * 0.9; this.hemi.intensity = Math.PI * 0.2; this.domeMat.uniforms.uGlow.value = 0.2; }
     this.partMat.opacity = ember ? 0.8 : 0.45 + 0.35 * day;
     this.partMat.color.setHex(ember ? 0xffb066 : 0xffffff);
 

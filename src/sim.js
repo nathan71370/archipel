@@ -12,6 +12,7 @@ export const SMELT = [
   rec([[I.COPPER_DUST, 1]], [I.COPPER, 1], 4),
   rec([[I.MEAT_RAW, 1]], [I.MEAT_COOKED, 1], 5),
   rec([[B.SAND, 1]], [B.GLASS, 1], 4),
+  rec([[B.TITAN_ORE, 1]], [I.TITAN, 1], 8),
   rec([[B.LOG, 1]], [I.COAL, 1], 6),
 ];
 const MILL = [
@@ -28,6 +29,13 @@ const PRINT = [
   rec([[I.PLATE, 3], [I.CIRCUIT, 2], [B.CRYSTAL, 2]], [I.PULSE, 1], 14),
   rec([[I.CELL, 1], [B.CRYSTAL, 3], [I.EMBER_SHARD, 2]], [I.PLASMA, 1], 14),
   rec([[I.PLATE, 4], [I.CELL, 2], [I.EMBER_SHARD, 2]], [I.JETPACK, 1], 18),
+  rec([[I.COMPOSITE, 4], [I.ROD, 1], [I.EMBER_SHARD, 4]], [I.ENGINE, 1], 20),
+  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [B.CRYSTAL, 2]], [I.MOD_NIGHT, 1], 12),
+  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.OXY, 4]], [I.MOD_AIR, 1], 12),
+  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.IRON, 8]], [I.MOD_MAGNET, 1], 12),
+  rec([[I.TITAN, 2], [I.CIRCUIT, 2], [I.STAR, 1]], [I.MOD_SHIELD, 1], 12),
+  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.FEATHER, 8]], [I.MOD_SPEED, 1], 12),
+  rec([[I.TITAN, 1], [I.CIRCUIT, 2], [I.JELLY, 6]], [I.MOD_SPRING, 1], 12),
   rec([[B.URANITE, 2], [I.PLATE, 1]], [I.ROD, 1], 10),
   rec([[I.PLATE, 1], [I.WIRE, 2], [B.CRYSTAL, 1]], [I.CIRCUIT, 2], 6),
   rec([[I.PLATE, 1], [I.WIRE, 2], [I.COAL, 2]], [I.CELL, 1], 6),
@@ -44,6 +52,13 @@ export const SEEDS = {
   [I.SEED_COAL]: [I.COAL, 2, 8], [I.SEED_IRON]: [B.IRON_ORE, 1, 8], [I.SEED_COPPER]: [B.COPPER_ORE, 1, 8],
   [I.SEED_CRYSTAL]: [B.CRYSTAL, 1, 12], [I.SEED_URANITE]: [B.URANITE, 1, 16], [I.SEED_EMBER]: [I.EMBER_SHARD, 1, 16],
 };
+const COMPRESS = [
+  rec([[I.PLATE, 2], [I.CARBON, 1]], [I.COMPOSITE, 1], 6),
+  rec([[I.COAL, 4]], [I.CARBON, 1], 5),
+];
+const REFINE = [
+  rec([[I.COAL, 2]], [I.FUEL, 1], 8),
+];
 const FUSE = [
   rec([[I.EMBER_SHARD, 2], [B.CRYSTAL, 2], [B.URANITE, 1]], [I.STAR, 1], 20),
 ];
@@ -71,15 +86,18 @@ export const MACHINES = {
   [B.LAVA_GEN]: { slots: [], gen: 120, tank: 8000, fluid: B.LAVA, hint: 'Brûle de la lave : un seau donne 120 W pendant une minute. Une pompe posée sur de la lave le nourrit sans fin.' },
   [B.BATTERY]: { slots: [], store: 20000, hint: 'Stocke le surplus et le rend quand la production manque.' },
   [B.CORE]: { slots: ['rod'], gen: 400, hint: "Le cœur va au centre d'un cube de 3×3×3 : 26 blindages l'entourent de tous côtés, coins compris. Une barre d'uranium y brûle 15 minutes. Le courant sort par un câble collé à un blindage ; un clic droit sur un blindage ouvre le cœur." },
+  [B.COMPRESSOR]: { slots: ['in', 'in', 'out'], recipes: COMPRESS, power: 45, hint: 'Presse le charbon en carbone, puis carbone et plaques en composite : léger, solide, bon pour voler loin.' },
+  [B.REFINERY]: { slots: ['in', 'out'], recipes: REFINE, power: 60, tank: 4000, fluid: B.LAVA, fluidUse: 500, hint: 'Distille du charbon à la chaleur de la lave : du carburant pour la fusée.' },
+  [B.ELECTRO]: { slots: ['out'], makes: [I.OXY, 1], time: 8, power: 60, tank: 4000, fluid: B.WATER, fluidUse: 500, hint: "Tire de l'oxygène de l'eau, en cartouches. Indispensable dans l'Éther sans respirateur." },
   [B.CONDENSER]: { slots: ['out'], makes: [I.DUST, 1], time: 10, power: 150, hint: "Tire de la poussière d'orage de l'air. Gourmand : 150 W." },
   [B.FORGE]: { slots: ['in', 'in', 'in', 'out'], recipes: FUSE, power: 300, hint: "Fond braise, cristal et uranite en alliage stellaire. Il lui faut 300 W : c'est un travail pour un réacteur." },
   [B.LIGHTHOUSE]: { slots: [], power: 300, beacon: 90, hint: "Donne-lui 300 W sans faiblir pendant une minute et demie pour le rallumer. Une fois allumé, il l'est pour toujours." },
 };
 // Tout ce qui se fait dans une machine, pour le guide de l'écran de fabrication : { where, ins, out, time }.
 export const GUIDE = [];
-for (const [id, list] of [[B.FURNACE, SMELT], [B.CNC, MILL], [B.WASHER, WASH], [B.PRINTER, PRINT], [B.FORGE, FUSE]]) for (const r of list) GUIDE.push({ where: id, ins: r.ins, out: r.out, time: r.time });
+for (const [id, list] of [[B.FURNACE, SMELT], [B.CNC, MILL], [B.WASHER, WASH], [B.PRINTER, PRINT], [B.COMPRESSOR, COMPRESS], [B.REFINERY, REFINE], [B.FORGE, FUSE]]) for (const r of list) GUIDE.push({ where: id, ins: r.ins, out: r.out, time: r.time });
 for (const id in SEEDS) GUIDE.push({ where: B.GROWER, ins: [[+id, 1]], out: [SEEDS[id][0], SEEDS[id][1]], time: SEEDS[id][2], keep: true });
-GUIDE.push({ where: B.STONER, ins: [], out: [B.STONE, 1], time: 2 }, { where: B.CONDENSER, ins: [], out: [I.DUST, 1], time: 10 });
+GUIDE.push({ where: B.STONER, ins: [], out: [B.STONE, 1], time: 2 }, { where: B.CONDENSER, ins: [], out: [I.DUST, 1], time: 10 }, { where: B.ELECTRO, ins: [], out: [I.OXY, 1], time: 8 });
 export const GEN = { [B.TURBINE]: 8, [B.SOLAR]: 12, [B.GENERATOR]: 40, [B.LAVA_GEN]: 120, [B.CORE]: 400 };
 // Raccord d'un tuyau avec une machine : bit 1 = pousser dedans, bit 2 = tirer dehors. 0 = débranché.
 export const PIPE_MODES = ['débranché', 'pousse vers la machine', 'tire de la machine', 'automatique'];
@@ -98,7 +116,7 @@ export function connects(pipe, id) {
 const DRAW = { [B.LAMP]: 1, [B.FAN]: 5, [B.TURRET]: 5, [B.TNT]: 0 };
 // Câbles, générateurs et machines conduisent ; lampes, ventilateurs, tourelles et poudrières sont en bout de ligne.
 const CONDUCT = new Set([B.CABLE, B.CASING, B.BATTERY, B.TURBINE, B.SOLAR, B.GENERATOR, B.LAVA_GEN, B.CORE,
-  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE]);
+  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO]);
 const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, ...Object.keys(GROW).map(Number)]);
 
 export const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -116,6 +134,7 @@ function hash(x, y, z) {
 const LOOT = [
   [[I.IRON, 2, 6], [I.COPPER, 2, 6], [I.COAL, 4, 10], [B.CRYSTAL, 1, 4], [I.DUST, 2, 5], [I.MEAT_COOKED, 2, 4], [I.AMMO, 6, 16], [B.TNT, 1, 3], [I.COIN, 2, 8]],
   [[I.EMBER_SHARD, 2, 5], [B.URANITE, 1, 3], [I.CIRCUIT, 1, 3], [I.PLATE, 2, 6], [I.DUST, 3, 7], [B.CRYSTAL, 2, 5], [I.CELL, 1, 2], [B.EMBER, 2, 6], [I.COIN, 4, 12]],
+  [[I.TITAN, 1, 4], [I.COMPOSITE, 2, 5], [I.OXY, 1, 3], [I.FUEL, 1, 2], [B.CRYSTAL, 2, 6], [B.URANITE, 1, 3], [I.CIRCUIT, 2, 4], [I.COIN, 6, 14]],
 ];
 function lootFor(d, x, y, z) {
   const slots = new Array(27).fill(null), table = LOOT[d];
@@ -132,7 +151,7 @@ export class Sim {
   //         vis(d, clé, valeur ou null) quand l'état visible d'un bloc change, setBlock(d, x, y, z, id) pour les cultures qui poussent
   constructor(hooks) {
     this.hooks = hooks;
-    this.dims = [0, 1].map(() => ({ blocks: new Map(), tiles: new Map(), vis: new Map(), open: new Map(), nets: null, pipes: null, powered: new Set(), active: new Set(), logi: 0 }));
+    this.dims = [0, 1, 2].map(() => ({ blocks: new Map(), tiles: new Map(), vis: new Map(), open: new Map(), nets: null, pipes: null, powered: new Set(), active: new Set(), logi: 0 }));
     this._act = null; // machines en marche pendant le pas en cours
     this.time = 0.3;
     this.rolls = 0;
@@ -163,6 +182,7 @@ export class Sim {
     if (!Array.isArray(data)) return;
     data.forEach((entry, d) => {
       const D = this.dims[d];
+      if (!D) return;
       const tiles = Array.isArray(entry) ? entry : entry?.tiles ?? []; // ancien format : liste seule
       for (const [k, t] of tiles) if (MACHINES[t.id]) D.tiles.set(k, t);
       for (const [k, v] of entry?.vis ?? []) D.vis.set(k, v);
@@ -497,7 +517,7 @@ export class Sim {
       let supply = 0;
       for (const g of net.gens) {
         if (g.id === B.TURBINE) supply += GEN[g.id];
-        else if (g.id === B.SOLAR) supply += d === 0 && isDay(this.time) ? GEN[g.id] : 0;
+        else if (g.id === B.SOLAR) supply += d === 2 ? GEN[g.id] * 2 : d === 0 && isDay(this.time) ? GEN[g.id] : 0; // dans l'Éther : plein soleil, sans nuit
       }
       for (const g of net.gens) {
         const t = D.tiles.get(g.k);
@@ -687,7 +707,7 @@ export class Sim {
 
   tick(dt, time) {
     this.time = time;
-    for (let d = 0; d < 2; d++) {
+    for (let d = 0; d < this.dims.length; d++) {
       const D = this.dims[d];
       // Fours à combustible : indépendants du réseau.
       const act = this._act = new Set();

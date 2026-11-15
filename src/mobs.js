@@ -218,6 +218,7 @@ function buildColosse() {
 
 const BUILD = {
   nuaki: buildNuaki, picore: buildPicore, rodeur: () => buildRodeur(), brandon: () => buildBrandon(),
+  veilleur: () => buildRodeur(0xd8dcec, 0x8087a3, 0xc77dff),
   scarab: buildScarab, colosse: buildColosse, gelee: buildGelee, cracheur: buildCracheur, planeuse: buildPlaneuse, golem: buildGolem, givrelin: () => buildRodeur(0xbfe6f5, 0x7fb4d6, 0xffffff),
   celien: (job) => buildVillager(JOB_COLORS[job][0], JOB_COLORS[job][1], 0xf3d9c4, 0xe9b58f),
   cendreux: (job) => buildVillager(0x3a2a2e, JOB_COLORS[job][1], 0x8f2b22, 0x9a8f96),

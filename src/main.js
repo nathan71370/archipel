@@ -23,7 +23,7 @@ const SOLO_KEY = 'archipel-save-v2';
 const REACH = 6;
 const $ = (id) => document.getElementById(id);
 const readSave = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
-const editsToMaps = (arr) => [0, 1].map((d) => new Map((arr?.[d] ?? []).map(([key, flat]) => {
+const editsToMaps = (arr) => [0, 1, 2].map((d) => new Map((arr?.[d] ?? []).map(([key, flat]) => {
   const m = new Map();
   for (let i = 0; i < flat.length; i += 2) m.set(flat[i], flat[i + 1]);
   return [key, m];
@@ -231,12 +231,12 @@ function startGame({ net = null, welcome = null }) {
     setBlock: (d, x, y, z, id) => { if (d === dim && world.setBlock(x, y, z, id)) return; recordEdit(editsByDim[d], x, y, z, id); sim.onSet(d, x, y, z, id); },
   });
   if (sim) { editsByDim.forEach((m, d) => sim.loadEdits(d, m)); sim.load(save?.sim); }
-  const poweredByDim = multi ? welcome.powered.map((keys) => new Set(keys)) : null;
+  const poweredByDim = multi ? [0, 1, 2].map((d) => new Set(welcome.powered[d] ?? [])) : null;
   const poweredSet = (d) => (multi ? poweredByDim[d] : sim.dims[d].powered);
-  const activeByDim = multi ? (welcome.active ?? [[], []]).map((keys) => new Set(keys)) : null;
+  const activeByDim = multi ? [0, 1, 2].map((d) => new Set(welcome.active?.[d] ?? [])) : null;
   const activeSet = (d) => (multi ? activeByDim[d] : sim.dims[d].active);
   // État visible des blocs (orientation, raccords des tuyaux, niveau des réservoirs…) : tenu par la simulation.
-  const visByDim = multi ? (welcome.vis ?? [[], []]).map((list) => new Map(list)) : null;
+  const visByDim = multi ? [0, 1, 2].map((d) => new Map(welcome.vis?.[d] ?? [])) : null;
   const visOf = (d) => (multi ? visByDim[d] : sim.dims[d].vis);
   function onVis(k, v) {
     const [x, y, z] = k.split(',').map(Number), id = world.get(x, y, z);
@@ -265,6 +265,9 @@ function startGame({ net = null, welcome = null }) {
   if (sim) { sim.power(0, 0); sim.power(1, 0); world.powered = poweredSet(dim); }
   const inv = new Inventory();
   inv.load(save?.inv);
+  // Le planeur est devenu un objet : une partie commencée avant en reçoit un, une fois.
+  if (save && !save.glider && !inv.glider()) inv.add(I.GLIDER1, 1);
+  let air = save?.air ?? 100; // oxygène, ne baisse que dans l'Éther
   let selected = save?.selected ?? 0;
   let respawnPoint = save?.respawn ?? null;
   const player = new Player(world);
@@ -305,6 +308,7 @@ function startGame({ net = null, welcome = null }) {
   const GOALS = [
     ['bois', 'Premier bois', 'Frappe un tronc à mains nues.', () => has(B.LOG) || has(B.PLANKS), 5],
     ['etabli', "L'établi", 'Sac (E) : tronc → planches → établi.', () => has(B.BENCH), 10],
+    ['planeur', 'Premier envol', 'Fabrique un planeur de toile : 4 bâtons et 6 feuillages. Espace en l\'air pour l\'ouvrir.', () => !!inv.glider(), 10],
     ['pioche', 'Première pioche', "Près d'un établi : planches et bâtons.", () => has(toolId(0, 0)), 10],
     ['four', 'Le four', '8 roches, puis du combustible et du minerai.', () => has(B.FURNACE), 15],
     ['fer', 'Âge du fer', 'Fonds du minerai de fer.', () => has(I.IRON), 20],
@@ -332,12 +336,18 @@ function startGame({ net = null, welcome = null }) {
     ['ailes', 'Libre comme l\'air', 'Fabrique les ailes de braise (il te faut un réacteur dorsal).', () => has(I.WINGS), 100],
     ['forge', 'Fusion', 'Fabrique une forge à fusion. Elle réclame 300 W : un réacteur.', () => has(B.FORGE), 100],
     ['alliage', 'Alliage stellaire', "Fonds braise, cristal et uranite dans la forge.", () => has(I.STAR), 100],
+    ['composite', 'Plus léger que l\'air', 'Compresseur : du charbon au carbone, puis aux plaques composites.', () => has(I.COMPOSITE), 60],
+    ['fusee', 'Compte à rebours', 'Fabrique une fusée (le guide du sac détaille les étapes).', () => has(B.ROCKET), 120],
+    ['ether', "L'Éther", 'Décolle avec 4 bidons de carburant. Emporte de l\'oxygène, et de quoi revenir.', () => flags.has('ether'), 150],
+    ['titane', 'Métal du ciel', 'Fonds du minerai de titane.', () => has(I.TITAN), 80],
+    ['bionique', 'Augmenté', 'Installe un module sur une armure bionique, à l\'atelier bionique.', () => inv.armor.some((a) => a?.m?.length) || flags.has('mod'), 120],
     ['phare', "Le Phare de l'Archipel", "Pose le phare et donne-lui 300 W sans faiblir jusqu'à ce qu'il s'allume.", () => flags.has('phare'), 300],
   ];
   let goalTimer = 0;
   function checkGoals() {
     if (world.villageNear(player.pos.x, player.pos.z, 30)) flags.add('village');
     if (dim === 1) flags.add('braise');
+    if (dim === 2) flags.add('ether');
     for (const [k, v] of visOf(dim)) if (v & 128) { const [x, y, z] = k.split(',').map(Number); if (world.get(x, y, z) === B.LIGHTHOUSE) lighthouseLit(); }
     for (const [id, title, , test, xp] of GOALS) {
       if (journal.has(id) || !test()) continue;
@@ -376,6 +386,7 @@ function startGame({ net = null, welcome = null }) {
   const ui = new UI(inv, icons, {
     drop: (st) => { if (!creative) dropStack(st, true); }, // en créatif, jeter hors du sac détruit l'objet
     creative: () => creative,
+    installed: (mod) => { flags.add('mod'); ui.toast(`Module installé : ${mod.name}`); blip(1100, 0.25, 'sine', 0.06); dirty = true; },
     level: () => levelOf(player.xp),
     spend: (levels) => { flags.add('enchant'); const l = levelOf(player.xp); player.xp -= xpForLevel(l) - xpForLevel(l - levels); blip(1200, 0.3, 'sine', 0.06); dirty = true; },
     gain: (id, n) => { flags.add('trade'); give(id, n); },
@@ -595,7 +606,7 @@ function startGame({ net = null, welcome = null }) {
     dirty = true;
   }
 
-  function travel(d) {
+  function travel(d, back = B.PORTAL) {
     fade.classList.add('on');
     setTimeout(() => fade.classList.remove('on'), 260);
     const from = { x: player.pos.x, z: player.pos.z };
@@ -603,12 +614,12 @@ function startGame({ net = null, welcome = null }) {
     const isl = world.nearestIsland(from.x, from.z);
     world.ensure(isl.x, isl.z, 2);
     const px = isl.x + 2, sy = world.surfaceY(px, isl.z);
-    if (world.get(px, sy, isl.z) !== B.PORTAL) world.setBlock(px, sy + 1, isl.z, B.PORTAL); // portail de retour
+    if (world.get(px, sy, isl.z) !== back) world.setBlock(px, sy + 1, isl.z, back); // portail (ou fusée) de retour
     const dest = { x: isl.x + 0.5, y: world.surfaceY(isl.x, isl.z) + 1, z: isl.z + 0.5 };
     player.teleport(dest);
     player.safe = { ...dest };
     blip(180, 0.5, 'sine', 0.08);
-    ui.toast(d === 1 ? 'Tu entres dans la Braise. Reste sur tes gardes.' : 'Retour sous le ciel.');
+    ui.toast(d === 2 ? "L'Éther. Pas d'air ici : surveille ton oxygène." : d === 1 ? 'Tu entres dans la Braise. Reste sur tes gardes.' : 'Retour sous le ciel.');
   }
 
   // ---------- Poudrières ----------
@@ -992,7 +1003,7 @@ function startGame({ net = null, welcome = null }) {
       const data = {
         dim, selected, inv, respawn: respawnPoint,
         pos: player.onGround ? player.pos : player.safe, yaw: player.yaw, pitch: player.pitch,
-        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival',
+        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air,
       };
       if (multi) net.send({ t: 'save', data });
       if (!multi) Object.assign(data, { seed, time: sky.time, clock: sky.clock, sim, edits: editsByDim.map((m) => [...m].map(([key, mm]) => [key, [...mm].flat()])) });
@@ -1249,7 +1260,23 @@ function startGame({ net = null, welcome = null }) {
       const skip = input.sneak && !!heldIt?.block;
       if (skip) { /* rien : la pose se fait plus bas */ }
       else if (id === B.ALTAR) { input.use = false; openInventory({ altar: true }); return; }
-      else if (id === B.PORTAL) { input.use = false; travel(1 - dim); return; }
+      else if (id === B.PORTAL) {
+        input.use = false;
+        if (dim === 2) { ui.toast("Le portail reste inerte dans l'Éther : il faut la fusée."); useCd = 0.5; return; }
+        travel(1 - dim);
+        return;
+      }
+      else if (id === B.ROCKET) {
+        // La fusée relie le Ciel (ou la Braise) à l'Éther. Chaque décollage brûle 4 bidons.
+        input.use = false;
+        if (!creative && inv.count(I.FUEL) < 4) { ui.toast(`Il faut 4 bidons de carburant pour décoller (tu en as ${inv.count(I.FUEL)}).`); useCd = 0.5; return; }
+        if (!creative) inv.remove(I.FUEL, 4);
+        snd.boom(3);
+        travel(dim === 2 ? 0 : 2, B.ROCKET);
+        ui.refreshHotbar(selected);
+        return;
+      }
+      else if (id === B.MODBENCH) { input.use = false; snd.open(false); openInventory({ altar: 'mods' }); return; }
       else if (id === B.CASING) {
         // Un blindage ouvre le cœur du réacteur qu'il protège.
         for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
@@ -1398,6 +1425,8 @@ function startGame({ net = null, welcome = null }) {
   applyQuality(localStorage.getItem('archipel-quality') ?? 'high');
 
   // Pas, vent et bruit des machines proches.
+  const GLIDER_COLOR = { 1: 0xe8795a, 2: 0xf4c95d, 3: 0x4a4f63, 4: 0xbfd4ff };
+  let chokeTimer = 0;
   let stepDist = 0, lastX = player.pos.x, lastZ = player.pos.z;
   function ambience(dt, running) {
     if (!running) { snd.hush(); return; }
@@ -1412,7 +1441,7 @@ function startGame({ net = null, welcome = null }) {
     }
     const speed = Math.hypot(player.vel.x, player.vel.y, player.vel.z), airborne = !player.onGround && !player.inLiquid;
     const high = dim === 0 ? Math.min(1, Math.max(0, (player.pos.y - 60) / 80)) : 0;
-    snd.loop('wind', Math.min(1, 0.1 + high * 0.14 + (airborne ? Math.max(0, speed - 6) / 22 : 0)), 380 + (airborne ? speed * 22 : 0));
+    snd.loop('wind', dim === 2 ? 0 : Math.min(1, 0.1 + high * 0.14 + (airborne ? Math.max(0, speed - 6) / 22 : 0)), 380 + (airborne ? speed * 22 : 0));
     snd.loop('rain', dim === 0 ? sky.rain : 0);
     snd.loop('fire', modelView.loud.fire);
     snd.loop('hum', modelView.loud.hum);
@@ -1440,6 +1469,22 @@ function startGame({ net = null, welcome = null }) {
       }
 
       // Réacteur dorsal
+      // Ce que le sac et l'armure changent au corps : planeur, modules bioniques, pesanteur du monde.
+      player.glide = dim === 2 ? null : inv.glider(); // pas d'air dans l'Éther : rien ne porte une voile
+      if (player.glide) wing.material.color.setHex(GLIDER_COLOR[player.glide.tier]);
+      player.gravityK = dim === 2 ? 0.3 : 1;
+      player.speedK = inv.hasMod('speed') ? 1.3 : 1;
+      player.jumpK = inv.hasMod('spring') ? 1.4 : 1;
+      player.pickR2 = inv.hasMod('magnet') ? 36 : 2.4;
+      shade.uMin.value += ((inv.hasMod('night') ? (dim === 0 && !sky.night ? 0.12 : 0.5) : 0.035) - shade.uMin.value) * Math.min(1, dt * 4);
+      // Oxygène : deux minutes et demie d'autonomie dans l'Éther, puis une cartouche part toute seule.
+      if (dim === 2 && !creative && !inv.hasMod('air')) {
+        air -= dt * (100 / 150);
+        if (air <= 0) {
+          if (inv.count(I.OXY) > 0) { inv.remove(I.OXY, 1); air = 100; ui.toast(`Cartouche d'oxygène entamée (il en reste ${inv.count(I.OXY)}).`); ui.refreshHotbar(selected); dirty = true; }
+          else { air = 0; if ((chokeTimer -= dt) <= 0) { chokeTimer = 1; damage(2, false); ui.toast("Plus d'oxygène !"); } }
+        }
+      } else air = Math.min(100, air + dt * 25);
       spaceHeld = input.jump ? spaceHeld + dt : 0;
       const pack = inv.armor[1];
       input.jet = playing && jetReady() && spaceHeld > 0.22 && !player.onGround && !player.gliding && !player.pull;
@@ -1449,7 +1494,7 @@ function startGame({ net = null, welcome = null }) {
       const impact = player.update(dt, playing ? input : IDLE);
       if (impact > 5) snd.land(impact);
       if (!wasWet !== !player.inLiquid) snd.splash();
-      if (impact > 15) damage((impact - 15) * 0.9 * (1 - 0.25 * (inv.armor[3]?.e?.feather ?? 0)), false);
+      if (impact > 15 && !inv.hasMod('spring')) damage((impact - 15) * 0.9 * (1 - 0.25 * (inv.armor[3]?.e?.feather ?? 0)), false);
 
       if (player.pos.y < -14) {
         const safe = player.safe ?? homeSpawn();
@@ -1460,7 +1505,10 @@ function startGame({ net = null, welcome = null }) {
         damage(4, false);
         if (mode !== 'dead') ui.toast('Le vent te ramène sur la terre ferme, non sans mal.');
       }
-      if (!glideHint && !player.onGround && !player.gliding && !player.pull && player.vel.y < -9) { glideHint = true; ui.toast('Espace pour ouvrir le planeur !'); }
+      if (!glideHint && !player.onGround && !player.gliding && !player.pull && !player.fly && player.vel.y < -9) {
+        glideHint = true;
+        ui.toast(player.glide ? 'Espace pour ouvrir le planeur !' : dim === 2 ? "Pas d'air pour planer ici : il faut un réacteur dorsal ou des ailes de braise." : 'Sans planeur, tu tombes : 4 bâtons et 6 feuillages en font un.');
+      }
       if (startHint && playing) { startHint = false; ui.toast('Frappe un tronc pour récolter du bois, puis ouvre ton sac avec E.'); }
 
       survival(dt);
@@ -1577,7 +1625,7 @@ function startGame({ net = null, welcome = null }) {
       bossEl.classList.toggle('hidden', !boss);
       if (boss) { bossEl.firstChild.textContent = boss.def.name; bossEl.querySelector('i').style.width = Math.max(0, (boss.hp / boss.def.hp) * 100) + '%'; }
       const online = compassLine() + (multi ? `<br>${remotes.map.size + 1} en ligne` : '') + (inv.armor[1] && ITEMS[inv.armor[1].id].charge ? `<br>Réacteur dorsal ${Math.round(((inv.armor[1].c ?? 0) / ITEMS[inv.armor[1].id].charge.max) * 100)} %` : '');
-      info.innerHTML = `ALTITUDE <b>${Math.max(0, Math.round(player.pos.y))}</b><br>${DIMS[dim]} · ${biome}${player.fly ? ' · en vol' : state}${creative ? '<br>MODE CRÉATIF' : ''}<br>${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${sky.night && dim === 0 ? ' · nuit' : ''}${online}`;
+      info.innerHTML = `ALTITUDE <b>${Math.max(0, Math.round(player.pos.y))}</b><br>${DIMS[dim]} · ${biome}${player.fly ? ' · en vol' : state}${creative ? '<br>MODE CRÉATIF' : ''}${dim === 2 && !creative ? `<br>OXYGÈNE <b>${inv.hasMod('air') ? '∞' : Math.ceil(air) + ' %'}</b>` : ''}<br>${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${sky.night && dim === 0 ? ' · nuit' : ''}${online}`;
     }
     if (dirty && (saveTimer -= dt) <= 0) { saveTimer = 5; persist(); }
 

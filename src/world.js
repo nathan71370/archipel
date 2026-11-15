@@ -21,15 +21,18 @@ MODEL.forEach((m, id) => { if (m) SEE[id] = 1; }); // un modèle ne remplit pas 
 BLOCKS.forEach((def, id) => { if (def && !SEE[id]) OPAQUE[id] = 1; });
 Object.entries({ [B.CRYSTAL]: 13, [B.EMBER]: 13, [B.LAVA]: 14, [B.CAP]: 11, [B.BEACON]: 14, [B.PORTAL]: 11, [B.URANITE]: 7, [B.ALTAR]: 9, [B.CORE]: 8, [B.LANTERN]: 14, [B.TORCH]: 12 }).forEach(([id, l]) => { EMIT[id] = l; });
 for (let l = 1; l <= 7; l++) EMIT[70 + l] = 12;
+// Modèles plus hauts que leur bloc : nombre de cases au-dessus par lesquelles on peut aussi les viser.
+const TALL = new Uint8Array(256);
+TALL[B.ROCKET] = 2; TALL[B.LIGHTHOUSE] = 1; TALL[B.TURBINE] = 1;
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 export const CS = 16, WY = 160;
 const CELL = 112, CPC = CELL / CS; // une île au plus par cellule de 7x7 tronçons
 export const VIEW = 11; // rayon de vue en tronçons
 
-export const BIOMES = ['Prairie', 'Forêt', 'Pics rocheux', 'Cristaux', 'Terres de braise', 'Champignonnière', 'Dunes', 'Glacier'];
+export const BIOMES = ['Prairie', 'Forêt', 'Pics rocheux', 'Cristaux', 'Terres de braise', 'Champignonnière', 'Dunes', 'Glacier', 'Astéroïde'];
 const SKY_BIOMES = [0, 1, 2, 3, 5, 6, 7];
-export const DIMS = ['Ciel', 'Braise'];
+export const DIMS = ['Ciel', 'Braise', 'Éther'];
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -381,12 +384,12 @@ export class World {
         x: i * CELL + r + 4 + Math.floor(hash(i, j, 3, s) * room),
         z: j * CELL + r + 4 + Math.floor(hash(i, j, 4, s) * room),
         y: home ? 72 : 60 + Math.floor(hash(i, j, 5, s) * 36),
-        biome: this.dim === 1 ? 4 : home ? 0 : SKY_BIOMES[Math.floor(hash(i, j, 6, s) * SKY_BIOMES.length)],
+        biome: this.dim === 2 ? 8 : this.dim === 1 ? 4 : home ? 0 : SKY_BIOMES[Math.floor(hash(i, j, 6, s) * SKY_BIOMES.length)],
         wind: hash(i, j, 7, s) * Math.PI * 2,
       };
       // Certaines grandes îles portent un village : Céliens sous le ciel, Cendreux dans la Braise.
       const sky = this.dim === 0;
-      if (!home && r >= 28 && (sky ? (isl.biome === 0 || isl.biome === 1) && hash(i, j, 20, s) < 0.55 : hash(i, j, 20, s) < 0.35)) {
+      if (this.dim < 2 && !home && r >= 28 && (sky ? (isl.biome === 0 || isl.biome === 1) && hash(i, j, 20, s) < 0.55 : hash(i, j, 20, s) < 0.35)) {
         const n = 4 + Math.floor(hash(i, j, 21, s) * 3), a0 = hash(i, j, 22, s) * 6.283;
         isl.village = { x: isl.x, z: isl.z, kind: this.dim, houses: [] };
         for (let k = 0; k < n; k++) {
@@ -427,6 +430,7 @@ export class World {
   // Courants ascendants naturels autour d'une position.
   updraftsNear(x, z) {
     const out = [], ci = Math.floor(x / CELL), cj = Math.floor(z / CELL);
+    if (this.dim === 2) return out; // pas d'air dans l'Éther
     for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) {
       const isl = this.island(i, j);
       if (isl) out.push({ x: isl.x + Math.cos(isl.wind) * (isl.r + 6), z: isl.z + Math.sin(isl.wind) * (isl.r + 6), r: 3.4, bottom: -20, top: Math.min(WY + 10, isl.y + 44) });
@@ -445,7 +449,7 @@ export class World {
     let top;
     if (isl.biome === 2) top = isl.y + Math.floor(rise * (3 + 26 * Math.max(0, h + 0.15) * Math.min(1, edge * 2)));
     else if (isl.biome === 3) top = isl.y + Math.floor(rise * (2 + 3 * h));
-    else if (isl.biome === 4) top = isl.y + Math.floor(rise * (2 + 13 * Math.abs(h)));
+    else if (isl.biome === 4 || isl.biome === 8) top = isl.y + Math.floor(rise * (2 + 13 * Math.abs(h)));
     else top = isl.y + Math.floor(rise * (3 + 6 * h));
     let depth = 2 + isl.r * 0.8 * Math.pow(edge, 0.62) * (0.75 + 0.45 * Math.abs(n.noise(x * 0.07, z * 0.07 + 50)));
     depth += Math.max(0, n.noise(x * 0.33 + 9, z * 0.33)) * 5 * edge;
@@ -468,6 +472,15 @@ export class World {
       if (o > 0.985 && top - y > 6) return B.URANITE;
       if (o < 0.066) return B.COAL_ORE;
       return id;
+    }
+    if (biome === 8) {
+      if (y > top - 2) return B.MOONDUST;
+      const o = hash(x >> 1, y >> 1, z >> 1, s);
+      if (o < 0.034 && top - y > 3) return B.TITAN_ORE;
+      if (o > 0.975) return B.CRYSTAL;
+      if (o > 0.962 && top - y > 5) return B.URANITE;
+      if (o < 0.06) return B.IRON_ORE;
+      return B.MOONROCK;
     }
     if (biome === 0 || biome === 1 || biome === 5) id = y === top ? (biome === 0 ? B.GRASS : biome === 1 ? B.MOSS : B.MYCEL) : y > top - 4 ? B.DIRT : B.STONE;
     else if (biome === 2) id = y === top ? (rel > 8 ? B.SNOW : rel > 3 ? B.STONE : B.GRASS) : (y > top - 2 && rel <= 3 ? B.DIRT : B.STONE);
@@ -594,6 +607,9 @@ export class World {
         for (let k = 1; k < h; k++) put(x, top + k, z, B.STEM, false);
       } else if (b === 5 && f < 0.03) {
         put(x, top + 1, z, B.CAP, true);
+      } else if (b === 8 && f < 0.012) {
+        const h = 2 + Math.floor(v * 5);
+        for (let k = 1; k <= h; k++) put(x, top + k, z, k === h ? B.CRYSTAL : B.MOONROCK, false);
       } else if (b === 4 && f < 0.022) {
         const h = 3 + Math.floor(v * 7);
         for (let k = 1; k <= h; k++) put(x, top + k, z, k === h ? B.EMBER : B.BASALT, false);
@@ -790,6 +806,7 @@ export class World {
     while (t <= maxDist) {
       const id = this.get(x, y, z);
       if (id && (!LIQ[id] || (liquids && (id === 46 || id === 47)))) return { x, y, z, nx, ny, nz, id, t }; // liquides : sources seulement
+      if (!id) for (let k = 1; k <= 2; k++) { const b = this.get(x, y - k, z); if (TALL[b] >= k) return { x, y: y - k, z, nx, ny, nz, id: b, t }; }
       if (tx < ty && tx < tz) { x += sx; t = tx; tx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (ty < tz) { y += sy; t = ty; ty += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tz; tz += tdz; nx = 0; ny = 0; nz = -sz; }
