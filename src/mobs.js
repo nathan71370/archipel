@@ -244,13 +244,20 @@ export class MobView {
         const model = BUILD[r[1]](r[2]);
         const meshes = [];
         model.group.traverse((o) => { if (o.isMesh) meshes.push(o); });
-        m = { id: r[0], type: r[1], job: r[2], def, hw: def.hw, h: def.h, ...model, meshes, pos: { x: r[3], y: r[4], z: r[5] }, yaw: r[6], phase: Math.random() * 6, strikeT: 0, speed: 0 };
+        const heart = part(model.group, 0.16, 0.16, 0.16, 0xff5470, 0, def.h / model.group.scale.x + 0.3, 0, { glow: true });
+        heart.visible = false;
+        meshes.push(heart);
+        m = { id: r[0], type: r[1], job: r[2], def, hw: def.hw, h: def.h, ...model, meshes, heart, base: model.group.scale.x, pos: { x: r[3], y: r[4], z: r[5] }, yaw: r[6], phase: Math.random() * 6, strikeT: 0, speed: 0 };
         m.group.position.set(r[3], r[4], r[5]);
         this.scene.add(m.group);
         this.map.set(r[0], m);
       }
       m.tx = r[3]; m.ty = r[4]; m.tz = r[5]; m.tyaw = r[6];
       m.flash = r[7]; m.chasing = r[9]; m.hp = r[10];
+      // Petit : moitié de la taille. Nourri : un cœur au-dessus de la tête.
+      const small = r[11] ? 0.5 : 1;
+      if (m.small !== small) { m.small = small; m.group.scale.setScalar(m.base * small); m.hw = m.def.hw * small; m.h = m.def.h * small; }
+      m.heart.visible = !!r[12];
       if (r[8] && m.strikeT <= 0) m.strikeT = 0.3;
     }
     for (const [id, m] of this.map) {
@@ -301,6 +308,7 @@ export class MobView {
       const swing = Math.sin(m.phase) * Math.min(0.8, sp * 0.3);
       m.strikeT = Math.max(0, m.strikeT - dt);
       m.tick?.(m);
+      if (m.heart.visible) { m.heart.position.y = def.h / m.base + 0.3 + Math.sin(m.phase * 0.8) * 0.06; m.heart.rotation.y += dt * 2; }
       m.limbs.forEach((l, j) => {
         const arm = j >= 2 && m.limbs.length === 4 && def.hostile;
         l.rotation.x = (j % 2 ? -swing : swing) * (arm ? 0.6 : 1) + (arm ? (m.reach && m.chasing ? -1.0 : 0) - Math.sin((m.strikeT / 0.3) * Math.PI) * 1.3 : 0);

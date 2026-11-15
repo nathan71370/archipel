@@ -1,6 +1,6 @@
 import { F_FUEL } from './items.js';
 import { B, BLOCKS, ITEMS, RECIPES, STATIONS, CATS, ARMOR_SLOTS, ENCHANTS, ELECTRIC, MODS, MOD_SLOTS, enchantsFor } from './items.js';
-import { MACHINES, GEN, GUIDE } from './sim.js';
+import { MACHINES, GEN, GUIDE, fluidOf } from './sim.js';
 
 const $ = (id) => document.getElementById(id);
 const SLOT_LABEL = { in: 'Entrée', fuel: 'Combustible', out: 'Sortie', rod: 'Barre', charge: 'À charger', seed: 'Germe', any: 'Contenu' };
@@ -41,13 +41,29 @@ const NOTES = [
     "Un tuyau à objets réglé sur « tire » vide la récolteuse vers un coffre.",
   ] },
   { title: 'Élevage et téléporteurs', icon: B.TELEPAD, find: 'elevage nourrir nuaki picore laine cisailles tondre teleporteur', steps: [
-    "Un Nuaki nourri au blé, ou un Picore aux graines, donne naissance à un petit. Les cisailles tondent un Nuaki : la laine repousse en deux minutes.",
-    "Téléporteur : clic droit sur un téléporteur alimenté (15 W) pour rejoindre le téléporteur alimenté le plus proche du même monde.",
+    "Nourris deux Nuakis proches au blé (ou deux Picores aux graines) : ils se rejoignent et un petit naît. Il devient adulte en quatre minutes.",
+    "Les cisailles tondent un Nuaki adulte : la laine repousse en deux minutes.",
+    "Téléporteur : clic droit pour le nommer et choisir sa destination, puis monte dessus. Les deux bouts doivent être alimentés (15 W chacun).",
   ] },
   { title: 'Germes de minerai', icon: 184, find: 'germe minerai planter cultivateur graine pousse', steps: [
     "Un germe s'obtient à l'imprimante 3D (8 minerais + 1 circuit) ou auprès des villageois.",
     "Planté sur de la terre labourée à la houe, il pousse seul en quelques minutes. À la récolte, le germe revient.",
     "Dans un cultivateur de minerai (eau + courant), il pousse bien plus vite et se récolte par tuyau.",
+  ] },
+  { title: 'Herbes et chimie', icon: B.SYNTH, find: 'cannabis herbe joint coca cocaine ecstasy chimie decomposeur synthetiseur sechoir extracteur fiole substance effet drogue', steps: [
+    "Graines : chez les villageois (cultivateur célien, sourcier cendreux) et dans les coffres anciens. Elles se plantent en terre labourée ; la récolte rend la graine.",
+    "Trois variétés de cannabis, trois effets : « Verte des prairies » apaise (la vie remonte), « Brume d'altitude » allège (pesanteur réduite), « Lueur mycélienne » éclaire la nuit.",
+    "Séchoir : têtes fraîches → têtes séchées. Tête séchée + papier (du blé) = un joint, 90 secondes d'effet. Extracteur : 2 têtes séchées → résine, plus longue.",
+    "Décomposeur : charbon → carbone, champignons → azote, cartouche d'oxygène → oxygène, givre ou gelée → hydrogène, en fioles.",
+    "Synthétiseur : carbone + hydrogène + azote → base cristalline, pressée au compresseur avec des baies → ecstasy (euphorie).",
+    "Coca séchée → pâte (extracteur) → cocaïne au synthétiseur avec hydrogène et oxygène (surexcitation : mine et frappe plus fort).",
+    "Reprendre une dose rallonge la durée, jusqu'à cinq minutes.",
+  ] },
+  { title: 'Filtres', icon: 400, find: 'filtre tuyau trier tri objets liquide raccord', steps: [
+    "Filtre en main, clic droit sur le raccord d'un tuyau avec une machine : il s'y fixe (manchon doré).",
+    "Clic droit sur ce raccord pour ouvrir le filtre : cinq cases. Clique une case avec un objet en main pour le désigner ; il n'est pas consommé.",
+    "Sur un tuyau à fluides, c'est un seau plein ou un bidon de carburant qui désigne le liquide.",
+    "Seul ce qui est désigné passe par ce raccord, dans les deux sens. Vide, il laisse tout passer.",
   ] },
   { title: 'Tuyaux et clé à molette', icon: 176, find: 'tuyau cle molette raccord tirer pousser debrancher cable', steps: [
     "Un tuyau se raccorde tout seul aux machines et aux autres tuyaux qu'il touche.",
@@ -78,6 +94,17 @@ export class UI {
       const s = e.target.closest('[data-i]'), a = e.target.closest('[data-a]'), r = e.target.closest('[data-r]');
       const t = e.target.closest('[data-t]'), p = e.target.closest('[data-p]');
       const f = e.target.closest('[data-f]'), g = e.target.closest('[data-g]'), o = e.target.closest('[data-o]'), d = e.target.closest('[data-d]');
+      const fi = e.target.closest('[data-fi]');
+      if (fi && this.filter) {
+        // Poser un objet le désigne sans le consommer ; un clic à vide efface la case.
+        const f = this.filter, i = +fi.dataset.fi, id = this.held?.id;
+        if (id != null && f.fluid && fluidOf(id) == null) { this.hooks.note?.('Pour un liquide, pose un seau plein ou un bidon de carburant.'); return; }
+        f.op(id != null ? { op: 'set', i, id } : { op: 'clear', i }, (res) => { if (Array.isArray(res)) f.slots = res; this.render(); });
+        return;
+      }
+      if (e.target.closest('[data-frem]') && this.filter) { this.filter.op({ op: 'remove' }, (ok) => { if (ok) this.hooks.filterRemoved?.(); }); return; }
+      const pad = e.target.closest('[data-pad]');
+      if (pad && this.tile?.padSet) { this.tile.padSet({ to: pad.dataset.pad }); this.tile.state.to = pad.dataset.pad; this.renderTile(); return; }
       const c = e.target.closest('[data-c]'), pal = e.target.closest('[data-q]');
       if (pal) { this.takeCreative(+pal.dataset.q, e.button, e.shiftKey); this.refresh(); return; }
       if (c) { this.cat = c.dataset.c; this.el.recipes.scrollTop = 0; this.render(); return; }
@@ -96,6 +123,8 @@ export class UI {
       else return;
       this.refresh();
     });
+    // Nom d'un téléporteur : validé par Entrée ou en quittant le champ.
+    this.el.inv.addEventListener('change', (e) => { if (e.target.id === 'padname' && this.tile?.padSet) this.tile.padSet({ name: e.target.value }); });
     this.el.search.addEventListener('input', () => { this.query = this.el.search.value; this.el.recipes.scrollTop = 0; this.render(); });
     addEventListener('mousemove', (e) => {
       if (!this.open) return;
@@ -170,8 +199,9 @@ export class UI {
   // ---------- Ouverture ----------
   // ctx : 'all' (touche E) ou 'bench' ; tile : lien vers un coffre ou une machine
   // altar : autel d'enchantement ; trade : { title, offers } d'un villageois
-  show({ ctx = 'all', tile = null, altar = false, trade = null, journal = null } = {}) {
+  show({ ctx = 'all', tile = null, altar = false, trade = null, journal = null, filter = null } = {}) {
     this.journal = journal;
+    this.filter = filter; // { slots, fluid, op(o, cb) } : filtre d'un raccord de tuyau
     this.ctx = ctx;
     this.tile = tile;
     this.altar = altar;
@@ -191,6 +221,7 @@ export class UI {
     this.altar = false;
     this.trade = null;
     this.journal = null;
+    this.filter = null;
     this.open = false;
     this.el.search.blur();
     this.el.inv.classList.add('hidden');
@@ -365,6 +396,16 @@ export class UI {
 
   renderSide() {
     const icon = (id, n) => `<span class="ing${this.inv.count(id) < n ? ' miss' : ''}" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt="">${n}</span>`;
+    if (this.filter) {
+      const f = this.filter;
+      $('crafttitle').textContent = f.fluid ? 'Filtre à liquides' : 'Filtre à objets';
+      this.el.stations.textContent = f.fluid
+        ? 'Seuls les liquides désignés passent par ce raccord. Clique une case avec un seau plein ou un bidon : il sert de modèle et reste dans ta main.'
+        : "Seuls les objets désignés passent par ce raccord. Clique une case avec l'objet en main : il sert de modèle et reste dans ta main. Vide, le filtre laisse tout passer.";
+      this.el.tilebox.innerHTML = '<div class="tslots">' + f.slots.map((id, i) => `<div class="tslot">${this.slotHTML(id != null ? { id, n: 1 } : null, `data-fi="${i}"`)}</div>`).join('') + '</div>';
+      this.el.recipes.innerHTML = '<div class="recipe" data-frem="1"><div class="rname">Retirer le filtre<small>il revient dans ton sac</small></div></div>';
+      return true;
+    }
     if (this.altar === 'mods') {
       $('crafttitle').textContent = 'Atelier bionique';
       const st = this.altarItem, bio = st && ITEMS[st.id].bionic;
@@ -432,6 +473,24 @@ export class UI {
     if (!st) { this.el.tilebox.innerHTML = '<div class="muted">Ouverture…</div>'; this.el.recipes.innerHTML = ''; return; }
 
     let html = '';
+    if (def.pad) {
+      // Ne pas redessiner pendant qu'on tape le nom.
+      if (document.activeElement?.id === 'padname') return;
+      const label = (p) => p.name || `Téléporteur ${p.x}, ${p.y}, ${p.z}`;
+      html = `<input id="padname" type="text" maxlength="24" placeholder="Nom de ce téléporteur" value="${(st.name ?? '').replace(/"/g, '&quot;')}">`
+        + `<div class="tinfo">${st.on ? 'Alimenté.' : '<span class="warn">Non alimenté : il lui faut 15 W.</span>'}</div>`;
+      let list = '<h3>Destination</h3>';
+      for (const p of st.pads ?? []) {
+        const dist = Math.round(Math.hypot(p.x - tile.x, p.y - tile.y, p.z - tile.z));
+        list += `<div class="recipe" data-pad="${p.k}"><div class="rname">${st.to === p.k ? '✓ ' : ''}${label(p).replace(/</g, '&lt;')}<small>à ${dist} m${p.on ? '' : ' · non alimenté'}</small></div><div class="ings"><span class="ing">${st.to === p.k ? 'choisi' : 'choisir'}</span></div></div>`;
+      }
+      if (!st.pads?.length) list += '<div class="muted">Aucun autre téléporteur dans ce monde : pose le second.</div>';
+      this.el.tilebox.innerHTML = html;
+      const scroll = this.el.recipes.scrollTop;
+      this.el.recipes.innerHTML = list;
+      this.el.recipes.scrollTop = scroll;
+      return;
+    }
     if (def.terminal) {
       const items = st.items ?? [];
       html = `<div class="term" data-g="put">${items.map(([id, n]) => `<div class="slot" data-g="${id}" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt=""><span class="n">${n > 999 ? (n / 1000).toFixed(1) + 'k' : n}</span></div>`).join('') || `<div class="muted">${st.stores ? `${st.stores} rangement${st.stores > 1 ? 's' : ''} relié${st.stores > 1 ? 's' : ''}, encore vide${st.stores > 1 ? 's' : ''}. Maj + clic dans le sac pour y ranger un objet.` : 'Aucun coffre ni tiroir relié : colle un tuyau à objets au terminal et à tes rangements.'}</div>`}</div>`
@@ -523,7 +582,7 @@ export class UI {
     const h = this.held;
     this.el.cursor.innerHTML = h ? `<img src="${this.icons[h.id].url}" alt="">${h.n > 1 ? `<span class="n">${h.n}</span>` : ''}` : '';
 
-    const crafting = !this.tile && !this.altar && !this.journal && !this.trade;
+    const crafting = !this.tile && !this.altar && !this.journal && !this.trade && !this.filter;
     this.el.craftbar.classList.toggle('hidden', !crafting);
     if (this.tile) { this.renderTile(); return; }
     if (this.renderSide()) return;

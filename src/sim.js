@@ -1,7 +1,7 @@
 // Simulation partagée (navigateur en solo, serveur en multijoueur) :
 // conteneurs, machines, réseau électrique, tuyaux à objets et à fluides.
 // Aucun accès au DOM ni à Three.js.
-import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW, REPLANT, F_FUEL } from './items.js';
+import { B, I, ITEMS, BLOCKS, ELECTRIC, GROW, REPLANT, HERBS, F_FUEL } from './items.js';
 
 const rec = (ins, out, time) => ({ ins, out, time });
 
@@ -52,7 +52,25 @@ export const SEEDS = {
   [I.SEED_COAL]: [I.COAL, 2, 8], [I.SEED_IRON]: [B.IRON_ORE, 1, 8], [I.SEED_COPPER]: [B.COPPER_ORE, 1, 8],
   [I.SEED_CRYSTAL]: [B.CRYSTAL, 1, 12], [I.SEED_URANITE]: [B.URANITE, 1, 16], [I.SEED_EMBER]: [I.EMBER_SHARD, 1, 16],
 };
+const DRY = [...HERBS.map((h) => rec([[h.fresh, 1]], [h.dry, 1], 6))];
+// Décomposition : une matière rendue à ses éléments, en fioles.
+const DECOMPOSE = [
+  rec([[I.COAL, 1]], [I.E_C, 2], 5),
+  rec([[I.MUSHROOM, 2]], [I.E_N, 2], 5),
+  rec([[I.OXY, 1]], [I.E_O, 3], 5),
+  rec([[I.FROST, 1]], [I.E_H, 2], 5),
+  rec([[I.JELLY, 1]], [I.E_H, 2], 5),
+];
+const EXTRACT = [
+  rec([[I.DRY_COCA, 2]], [I.PASTE, 1], 8),
+  ...HERBS.filter((h) => h.joint).map((h) => rec([[h.dry, 2]], [I.RESIN, 1], 8)),
+];
+const SYNTHESIS = [
+  rec([[I.PASTE, 1], [I.E_H, 1], [I.E_O, 1]], [I.COCAINE, 2], 14),
+  rec([[I.E_C, 2], [I.E_H, 2], [I.E_N, 1]], [I.BASE, 1], 14),
+];
 const COMPRESS = [
+  rec([[I.BASE, 1], [I.BERRIES, 2]], [I.ECSTASY, 2], 6),
   rec([[I.PLATE, 2], [I.CARBON, 1]], [I.COMPOSITE, 1], 6),
   rec([[I.COAL, 4]], [I.CARBON, 1], 5),
 ];
@@ -94,6 +112,11 @@ export const MACHINES = {
   [B.COMPRESSOR]: { slots: ['in', 'in', 'out'], recipes: COMPRESS, power: 45, hint: 'Presse le charbon en carbone, puis carbone et plaques en composite : léger, solide, bon pour voler loin.' },
   [B.REFINERY]: { slots: ['in'], distill: { id: I.COAL, amt: 250, time: 4 }, power: 60, tank: 4000, hint: "Distille le charbon en carburant liquide (250 L par charbon). Un tuyau à fluides, ou une embouteilleuse collée contre elle, l'emporte." },
   [B.CANNER]: { slots: ['in', 'out'], recipes: CAN, power: 20, tank: 4000, fluid: F_FUEL, fluidUse: 500, hint: 'Remplit les bidons vides de carburant : 500 L par bidon.' },
+  [B.DRYER]: { slots: ['in', 'out'], recipes: DRY, power: 15, hint: 'Sèche les têtes fraîches et les feuilles de coca.' },
+  [B.DECOMP]: { slots: ['in', 'out'], recipes: DECOMPOSE, power: 60, hint: 'Rend une matière à ses éléments : carbone, hydrogène, oxygène, azote, en fioles.' },
+  [B.EXTRACTOR]: { slots: ['in', 'out'], recipes: EXTRACT, power: 40, tank: 4000, fluid: B.WATER, fluidUse: 250, hint: "Tire à l'eau la résine des têtes séchées et la pâte de la coca séchée." },
+  [B.SYNTH]: { slots: ['in', 'in', 'in', 'out'], recipes: SYNTHESIS, power: 80, hint: 'Assemble éléments et extraits en substances. La base cristalline se presse ensuite au compresseur.' },
+  [B.TELEPAD]: { slots: [], pad: true, hint: "Choisis sa destination ci-dessous, puis monte dessus : le départ se fait tout seul. Les deux téléporteurs doivent être alimentés (15 W chacun)." },
   [B.HARVESTER]: { slots: ['out', 'out', 'out', 'out'], harvest: 4, time: 3, power: 40, hint: 'Cueille ce qui est mûr à 4 blocs autour d\'elle (blé, plants de minerai) et replante aussitôt. Un tuyau réglé sur « tire » la vide.' },
   [B.SPRINKLER]: { slots: [], sprinkle: 4, tank: 4000, fluid: B.WATER, power: 10, hint: 'Arrose à 4 blocs autour de lui : tout y pousse trois fois plus vite. Boit 5 L d\'eau par seconde.' },
   [B.ALLOY]: { slots: ['in', 'in', 'out'], recipes: ALLOYS, power: 50, hint: "Fond deux matières ensemble : fer et carbone donnent l'acier, cuivre et cristal l'électrum." },
@@ -104,7 +127,7 @@ export const MACHINES = {
 };
 // Tout ce qui se fait dans une machine, pour le guide de l'écran de fabrication : { where, ins, out, time }.
 export const GUIDE = [];
-for (const [id, list] of [[B.FURNACE, SMELT], [B.CNC, MILL], [B.WASHER, WASH], [B.PRINTER, PRINT], [B.COMPRESSOR, COMPRESS], [B.ALLOY, ALLOYS], [B.CANNER, CAN], [B.FORGE, FUSE]]) for (const r of list) GUIDE.push({ where: id, ins: r.ins, out: r.out, time: r.time });
+for (const [id, list] of [[B.FURNACE, SMELT], [B.CNC, MILL], [B.WASHER, WASH], [B.PRINTER, PRINT], [B.COMPRESSOR, COMPRESS], [B.ALLOY, ALLOYS], [B.CANNER, CAN], [B.DRYER, DRY], [B.DECOMP, DECOMPOSE], [B.EXTRACTOR, EXTRACT], [B.SYNTH, SYNTHESIS], [B.FORGE, FUSE]]) for (const r of list) GUIDE.push({ where: id, ins: r.ins, out: r.out, time: r.time });
 for (const id in SEEDS) GUIDE.push({ where: B.GROWER, ins: [[+id, 1]], out: [SEEDS[id][0], SEEDS[id][1]], time: SEEDS[id][2], keep: true });
 GUIDE.push({ where: B.STONER, ins: [], out: [B.STONE, 1], time: 2 }, { where: B.CONDENSER, ins: [], out: [I.DUST, 1], time: 10 }, { where: B.ELECTRO, ins: [], out: [I.OXY, 1], time: 8 });
 export const GEN = { [B.TURBINE]: 8, [B.SOLAR]: 12, [B.GENERATOR]: 40, [B.LAVA_GEN]: 120, [B.CORE]: 400 };
@@ -114,6 +137,9 @@ export const isPipe = (id) => id === B.CABLE || id === B.ITEM_PIPE || id === B.F
 // État visible d'un bloc (« vis »), partagé avec l'affichage :
 //   tuyaux et câbles : 2 bits par côté (ordre de N6), 0xfff par défaut — voir PIPE_MODES ;
 //   autres blocs : bits 0-1 orientation, bits 2-5 niveau d'un réservoir (0 à 8), bit 6 lave, bit 7 ouvert (coffre) ou allumé (phare).
+// Liquide que représente un objet posé dans un filtre de tuyau à fluides (seau plein, bidon de carburant).
+export const fluidOf = (id) => ITEMS[id]?.fluid ?? (id === I.FUEL ? F_FUEL : null);
+export const FILTER_SLOTS = 5;
 export const sideOf = (v, i) => ((v ?? 0xfff) >> (i * 2)) & 3;
 // Ce à quoi un câble ou un tuyau se raccorde.
 export function connects(pipe, id) {
@@ -125,7 +151,7 @@ export function connects(pipe, id) {
 const DRAW = { [B.LAMP]: 1, [B.FAN]: 5, [B.TURRET]: 5, [B.TNT]: 0, [B.TELEPAD]: 15 };
 // Câbles, générateurs et machines conduisent ; lampes, ventilateurs, tourelles et poudrières sont en bout de ligne.
 const CONDUCT = new Set([B.CABLE, B.CASING, B.BATTERY, B.TURBINE, B.SOLAR, B.GENERATOR, B.LAVA_GEN, B.CORE,
-  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER, B.HARVESTER, B.SPRINKLER]);
+  B.E_FURNACE, B.CNC, B.PRINTER, B.CHARGER, B.PUMP, B.STONER, B.GROWER, B.WASHER, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER, B.HARVESTER, B.SPRINKLER, B.DRYER, B.DECOMP, B.EXTRACTOR, B.SYNTH]);
 const RELEVANT = new Set([...ELECTRIC, B.CHEST, B.FURNACE, B.DRAWER, B.TERMINAL, B.TANK, B.ITEM_PIPE, B.FLUID_PIPE, B.FARMLAND, ...Object.keys(GROW).map(Number), ...Object.keys(REPLANT).map(Number)]);
 
 export const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -141,8 +167,8 @@ function hash(x, y, z) {
 
 // Butin d'un coffre ancien, stable pour une position donnée.
 const LOOT = [
-  [[I.IRON, 2, 6], [I.COPPER, 2, 6], [I.COAL, 4, 10], [B.CRYSTAL, 1, 4], [I.DUST, 2, 5], [I.MEAT_COOKED, 2, 4], [I.AMMO, 6, 16], [B.TNT, 1, 3], [I.COIN, 2, 8]],
-  [[I.EMBER_SHARD, 2, 5], [B.URANITE, 1, 3], [I.CIRCUIT, 1, 3], [I.PLATE, 2, 6], [I.DUST, 3, 7], [B.CRYSTAL, 2, 5], [I.CELL, 1, 2], [B.EMBER, 2, 6], [I.COIN, 4, 12]],
+  [[401, 1, 2], [402, 1, 2], [I.IRON, 2, 6], [I.COPPER, 2, 6], [I.COAL, 4, 10], [B.CRYSTAL, 1, 4], [I.DUST, 2, 5], [I.MEAT_COOKED, 2, 4], [I.AMMO, 6, 16], [B.TNT, 1, 3], [I.COIN, 2, 8]],
+  [[403, 1, 2], [404, 1, 2], [I.EMBER_SHARD, 2, 5], [B.URANITE, 1, 3], [I.CIRCUIT, 1, 3], [I.PLATE, 2, 6], [I.DUST, 3, 7], [B.CRYSTAL, 2, 5], [I.CELL, 1, 2], [B.EMBER, 2, 6], [I.COIN, 4, 12]],
   [[I.TITAN, 1, 4], [I.COMPOSITE, 2, 5], [I.OXY, 1, 3], [I.FUEL, 1, 2], [B.CRYSTAL, 2, 6], [B.URANITE, 1, 3], [I.CIRCUIT, 2, 4], [I.COIN, 6, 14]],
 ];
 function lootFor(d, x, y, z) {
@@ -160,7 +186,7 @@ export class Sim {
   //         vis(d, clé, valeur ou null) quand l'état visible d'un bloc change, setBlock(d, x, y, z, id) pour les cultures qui poussent
   constructor(hooks) {
     this.hooks = hooks;
-    this.dims = [0, 1, 2].map(() => ({ blocks: new Map(), tiles: new Map(), vis: new Map(), open: new Map(), wet: [], nets: null, pipes: null, powered: new Set(), active: new Set(), logi: 0 }));
+    this.dims = [0, 1, 2].map(() => ({ blocks: new Map(), tiles: new Map(), vis: new Map(), open: new Map(), wet: [], filters: new Map(), nets: null, pipes: null, powered: new Set(), active: new Set(), logi: 0 }));
     this._act = null; // machines en marche pendant le pas en cours
     this.time = 0.3;
     this.rolls = 0;
@@ -185,6 +211,7 @@ export class Sim {
       tiles: [...D.tiles].map(([k, t]) => [k, { ...t, net: undefined, items: undefined }]),
       // Niveau des réservoirs, coffres ouverts, phare allumé : recalculés à chaque pas, inutile de les garder.
       vis: [...D.vis].map(([k, v]) => [k, isPipe(D.blocks.get(k)?.id) ? v : v & 3]).filter(([, v]) => v),
+      filters: [...D.filters],
     }));
   }
   load(data) {
@@ -195,6 +222,7 @@ export class Sim {
       const tiles = Array.isArray(entry) ? entry : entry?.tiles ?? []; // ancien format : liste seule
       for (const [k, t] of tiles) if (MACHINES[t.id]) D.tiles.set(k, t);
       for (const [k, v] of entry?.vis ?? []) D.vis.set(k, v);
+      for (const [k, v] of entry?.filters ?? []) D.filters.set(k, v);
       // Ancien format : un seul mode par tuyau, appliqué à tous ses côtés.
       for (const [k, m] of entry?.pmode ?? []) if (m !== 3) D.vis.set(k, (m & 3) * 0x555);
       D.nets = D.pipes = null;
@@ -225,6 +253,8 @@ export class Sim {
     const D = this.dims[d], k = key(x, y, z);
     const old = D.blocks.get(k), tile = D.tiles.get(k);
     D.open.delete(k);
+    // Les filtres posés sur ce tuyau tombent avec lui.
+    for (let i = 0; i < 6; i++) if (D.filters.delete(k + '|' + i)) this.hooks.drop(d, x, y, z, { id: I.FILTER, n: 1 });
     this.setVis(d, k, isPipe(id) ? 0xfff : (meta?.rot ?? 0) & 3, isPipe(id));
     // Un tuyau neuf se raccorde à ses voisins, même à ceux qu'on avait débranchés de son prédécesseur.
     if (isPipe(id)) N6.forEach(([dx, dy, dz], i) => {
@@ -269,6 +299,16 @@ export class Sim {
   // État envoyé à l'interface (le terminal y ajoute l'inventaire du réseau).
   view(d, x, y, z) {
     const t = this.dims[d].tiles.get(key(x, y, z));
+    if (t && t.id === B.TELEPAD) {
+      const D = this.dims[d];
+      t.on = D.powered.has(key(x, y, z));
+      t.pads = [];
+      for (const b of D.blocks.values()) {
+        if (b.id !== B.TELEPAD || (b.x === x && b.y === y && b.z === z)) continue;
+        const k = key(b.x, b.y, b.z);
+        t.pads.push({ k, x: b.x, y: b.y, z: b.z, name: D.tiles.get(k)?.name ?? '', on: D.powered.has(k) });
+      }
+    }
     if (t && t.id === B.TERMINAL) { t.items = this.termItems(d, x, y, z); t.stores = this.termStores(d, x, y, z).length; }
     return t ?? null;
   }
@@ -298,6 +338,37 @@ export class Sim {
     if (b.id === B.CABLE) { D.nets = null; this.power(d, 0); }
     return { mode, machine };
   }
+  // ---------- Filtres ----------
+  // Un filtre se pose sur le raccord d'un tuyau avec une machine (côté side). Vide, il laisse tout passer ;
+  // sinon seuls les objets (ou les liquides, représentés par un seau ou un bidon) qu'il liste passent.
+  // op : { op: 'add' | 'get' | 'remove' } ou { op: 'set', i, id } / { op: 'clear', i }. Renvoie la liste, true/false ou null.
+  filterOp(d, x, y, z, side, o) {
+    const D = this.dims[d], k = key(x, y, z), b = D.blocks.get(k), fk = k + '|' + side;
+    if (!b || (b.id !== B.ITEM_PIPE && b.id !== B.FLUID_PIPE) || !(side >= 0 && side < 6) || !o) return null;
+    const cur = D.filters.get(fk), bit = 1 << (12 + side);
+    if (o.op === 'add') {
+      const [dx, dy, dz] = N6[side], nb = D.blocks.get(key(x + dx, y + dy, z + dz));
+      if (cur || !nb || nb.id === b.id || !connects(b.id, nb.id)) return false;
+      D.filters.set(fk, new Array(FILTER_SLOTS).fill(null));
+      this.setVis(d, k, (D.vis.get(k) ?? 0xfff) | bit, true);
+      return true;
+    }
+    if (!cur) return null;
+    if (o.op === 'remove') { D.filters.delete(fk); this.setVis(d, k, (D.vis.get(k) ?? 0xfff) & ~bit, true); return true; }
+    const i = o.i | 0;
+    if (i >= 0 && i < FILTER_SLOTS) {
+      if (o.op === 'clear') cur[i] = null;
+      else if (o.op === 'set' && ITEMS[o.id] && (b.id === B.ITEM_PIPE || fluidOf(o.id) != null)) cur[i] = o.id;
+    }
+    return cur;
+  }
+  // Ce raccord laisse-t-il passer cet objet (ou ce liquide) ?
+  passes(D, att, id, fluid) {
+    const list = D.filters.get(att.pk + '|' + att.side)?.filter((v) => v != null);
+    if (!list?.length) return true;
+    return fluid ? list.some((it) => fluidOf(it) === id) : list.includes(id);
+  }
+
   // Un rangement (coffre, tiroir, réservoir) ne se vide que par un raccord réglé sur « tire » :
   // sinon deux coffres sur le même réseau se renverraient leurs objets sans fin.
   canPull(D, att, tile, fluid) {
@@ -417,13 +488,21 @@ export class Sim {
     return null;
   }
 
+  // Ce que donne un plant (les herbes dépendent de leur variété, portée par l'état du bloc).
+  cropDrop(D, b) {
+    const def = BLOCKS[b.id];
+    if (!def.herb) return def.drop;
+    const h = HERBS[(D.vis.get(key(b.x, b.y, b.z)) ?? 0) & 3];
+    return def.herb === 2 ? [h.fresh, 2] : [h.seed, 1];
+  }
+
   // Premier plant mûr à portée d'une récolteuse (c : sa position), dont la récolte tient dans ses sorties.
   ripeNear(D, tile, def, c) {
     const r = def.harvest;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
       const b = D.blocks.get(key(c.x + dx, c.y + dy, c.z + dz));
       if (!b || REPLANT[b.id] == null) continue;
-      const [id, n] = BLOCKS[b.id].drop;
+      const [id, n] = this.cropDrop(D, b);
       if (this.outRoom(tile, def, id, n)) return b;
     }
     return null;
@@ -448,9 +527,9 @@ export class Sim {
       tile.prog = 0;
       const b = c && this.ripeNear(this.dims[d], tile, def, c);
       if (!b) return;
-      const [id, n] = BLOCKS[b.id].drop;
+      const D = this.dims[d], [id, n] = this.cropDrop(D, b), v = (D.vis.get(key(b.x, b.y, b.z)) ?? 0) & 3;
       this.addOut(tile, def, id, n);
-      this.hooks.setBlock?.(d, b.x, b.y, b.z, REPLANT[b.id]);
+      this.hooks.setBlock?.(d, b.x, b.y, b.z, REPLANT[b.id], v ? { rot: v } : undefined);
       return;
     }
     if (def.sprinkle) {
@@ -556,7 +635,7 @@ export class Sim {
     for (const net of D.nets) {
       let demand = 0;
       for (const c of net.cons) {
-        const def = MACHINES[c.id];
+        const def = DRAW[c.id] != null ? null : MACHINES[c.id]; // lampes, téléporteurs… : simple consommation fixe
         c.tile = def ? D.tiles.get(c.k) : null;
         c.w = def ? (c.tile && this.wants(c.tile, def, c, D) ? def.power : 0) : DRAW[c.id];
         demand += c.w;
@@ -653,9 +732,9 @@ export class Sim {
     D.pipes = out;
   }
 
-  firstOut(tile) {
+  firstOut(tile, ok) {
     const kinds = MACHINES[tile.id].slots;
-    const i = kinds.findIndex((kd, j) => (kd === 'out' || kd === 'any') && tile.slots[j]);
+    const i = kinds.findIndex((kd, j) => (kd === 'out' || kd === 'any') && tile.slots[j] && (!ok || ok(tile.slots[j].id)));
     return i < 0 ? null : { slot: i, st: tile.slots[i] };
   }
 
@@ -681,23 +760,28 @@ export class Sim {
       net.turn++;
       for (const src of ends) {
         if (!this.canPull(D, src.a, src.tile, false)) continue;
-        const first = this.firstOut(src.tile);
-        if (!first) continue;
-        const batch = { ...first.st, n: Math.min(8, first.st.n) };
-        for (let j = 0; j < dests.length; j++) {
-          const dst = dests[(j + net.turn) % dests.length];
-          if (dst.tile === src.tile) continue;
-          const moved = this.insert(dst.tile, batch, true);
-          if (moved > 0) { this.take(src.tile, first.slot, moved); break; }
+        // Chaque sorte d'objet en attente est proposée à son tour : un objet que personne ne prend ne bloque pas les autres.
+        const kinds = MACHINES[src.tile.id].slots, tried = new Set();
+        send: for (let s = 0; s < kinds.length; s++) {
+          const st = src.tile.slots[s];
+          if (!st || (kinds[s] !== 'out' && kinds[s] !== 'any') || tried.has(st.id) || !this.passes(D, src.a, st.id, false)) continue;
+          tried.add(st.id);
+          const batch = { ...st, n: Math.min(8, st.n) };
+          for (let j = 0; j < dests.length; j++) {
+            const dst = dests[(j + net.turn) % dests.length];
+            if (dst.tile === src.tile || !this.passes(D, dst.a, batch.id, false)) continue;
+            const moved = this.insert(dst.tile, batch, true);
+            if (moved > 0) { this.take(src.tile, s, moved); break send; }
+          }
         }
       }
     }
     for (const net of D.pipes[B.FLUID_PIPE]) {
       const ends = net.atts.map((a) => ({ a, tile: D.tiles.get(a.k) })).filter((e) => e.tile && MACHINES[e.tile.id].tank);
       for (const src of ends) {
-        if (!this.canPull(D, src.a, src.tile, true) || !(src.tile.f?.amt > 0)) continue;
+        if (!this.canPull(D, src.a, src.tile, true) || !(src.tile.f?.amt > 0) || !this.passes(D, src.a, src.tile.f.id, true)) continue;
         // Le débit est partagé entre les destinations, chacune à son tour en premier.
-        const dsts = ends.filter((e) => e.tile !== src.tile && this.canPush(D, e.a));
+        const dsts = ends.filter((e) => e.tile !== src.tile && this.canPush(D, e.a) && this.passes(D, e.a, src.tile.f.id, true));
         let budget = 1000;
         net.turn++;
         for (let j = 0; j < dsts.length && budget > 0; j++) {
@@ -716,17 +800,21 @@ export class Sim {
   }
 
   // ---------- Téléporteurs ----------
-  // Un téléporteur alimenté envoie vers le téléporteur alimenté le plus proche du même monde.
+  // Un téléporteur envoie vers la destination qu'on lui a choisie ; les deux bouts doivent être alimentés.
   padDest(d, x, y, z) {
-    const D = this.dims[d], k = key(x, y, z);
+    const D = this.dims[d], k = key(x, y, z), to = D.tiles.get(k)?.to;
     if (!D.powered.has(k)) return { err: 'off' };
-    let best = null, bd = Infinity;
-    for (const b of D.blocks.values()) {
-      if (b.id !== B.TELEPAD || (b.x === x && b.y === y && b.z === z) || !D.powered.has(key(b.x, b.y, b.z))) continue;
-      const dist = Math.hypot(b.x - x, b.y - y, b.z - z);
-      if (dist < bd) { bd = dist; best = b; }
-    }
-    return best ? { x: best.x, y: best.y, z: best.z } : { err: 'none' };
+    const b = to && D.blocks.get(to);
+    if (!b || b.id !== B.TELEPAD) return { err: 'unset' };
+    if (!D.powered.has(to)) return { err: 'destoff' };
+    return { x: b.x, y: b.y, z: b.z };
+  }
+  // Réglages d'un téléporteur : son nom, sa destination (clé d'un autre téléporteur du même monde).
+  padSet(d, x, y, z, set) {
+    const D = this.dims[d], t = D.tiles.get(key(x, y, z));
+    if (!t || t.id !== B.TELEPAD || !set) return;
+    if (typeof set.name === 'string') t.name = set.name.trim().slice(0, 24);
+    if (typeof set.to === 'string' && D.blocks.get(set.to)?.id === B.TELEPAD && set.to !== key(x, y, z)) t.to = set.to;
   }
 
   // ---------- Terminal de stockage ----------
@@ -805,10 +893,11 @@ export class Sim {
     for (const b of [...D.blocks.values()]) {
       const g = GROW[b.id];
       if (!g) continue;
-      if (D.blocks.get(key(b.x, b.y - 1, b.z))?.id !== B.FARMLAND) { const [id, n] = BLOCKS[b.id].drop; this.hooks.setBlock?.(d, b.x, b.y, b.z, 0); this.hooks.drop(d, b.x, b.y, b.z, { id, n }); }
+      const v = (D.vis.get(key(b.x, b.y, b.z)) ?? 0) & 3; // variété d'une herbe, conservée d'un stade à l'autre
+      if (D.blocks.get(key(b.x, b.y - 1, b.z))?.id !== B.FARMLAND) { const [id, n] = this.cropDrop(D, b); this.hooks.setBlock?.(d, b.x, b.y, b.z, 0); this.hooks.drop(d, b.x, b.y, b.z, { id, n }); }
       else {
         const wet = D.wet.some((s) => Math.abs(s.x - b.x) <= 4 && Math.abs(s.z - b.z) <= 4 && Math.abs(s.y - b.y) <= 2);
-        if (Math.random() < (wet ? 3 : 1) / g[1]) this.hooks.setBlock?.(d, b.x, b.y, b.z, g[0]);
+        if (Math.random() < (wet ? 3 : 1) / g[1]) this.hooks.setBlock?.(d, b.x, b.y, b.z, g[0], v ? { rot: v } : undefined);
       }
     }
     D.wet.length = 0;

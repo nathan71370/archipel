@@ -5,7 +5,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World, DIMS, shadedBox, blockGeometry, recordEdit } from './world.js';
 import { makeAtlas, itemGeometry } from './textures.js';
-import { B, I, BLOCKS, ITEMS, ELECTRIC, Inventory, LIQUID, PASS, fluidKind, levelOf, xpForLevel, toolId } from './items.js';
+import { B, I, BLOCKS, ITEMS, ELECTRIC, Inventory, LIQUID, PASS, HERBS, FX, fluidKind, levelOf, xpForLevel, toolId } from './items.js';
 import { Player } from './player.js';
 import { MobView } from './mobs.js';
 import { MobSim } from './mobsim.js';
@@ -228,7 +228,11 @@ function startGame({ net = null, welcome = null }) {
     active: () => {},
     vis: (d, k, v) => { if (d === dim) onVis(k, v); },
     // Une culture pousse (ou meurt) : dans le monde affiché si c'est le nôtre, sinon directement dans ses modifications.
-    setBlock: (d, x, y, z, id) => { if (d === dim && world.setBlock(x, y, z, id)) return; recordEdit(editsByDim[d], x, y, z, id); sim.onSet(d, x, y, z, id); },
+    setBlock: (d, x, y, z, id, meta) => {
+      if (d === dim) { placeMeta = meta ?? null; if (world.setBlock(x, y, z, id)) return; placeMeta = null; }
+      recordEdit(editsByDim[d], x, y, z, id);
+      sim.onSet(d, x, y, z, id, meta);
+    },
   });
   if (sim) { editsByDim.forEach((m, d) => sim.loadEdits(d, m)); sim.load(save?.sim); }
   const poweredByDim = multi ? [0, 1, 2].map((d) => new Set(welcome.powered[d] ?? [])) : null;
@@ -268,7 +272,22 @@ function startGame({ net = null, welcome = null }) {
   // Le planeur est devenu un objet : une partie commencée avant en reçoit un, une fois.
   if (save && !save.glider && !inv.glider()) inv.add(I.GLIDER1, 1);
   if (save?.owed) inv.add(B.ROCKET, 1); // partie quittée en plein vol : la fusée est rendue
-  let air = save?.air ?? 100; // oxygène, ne baisse que dans l'Éther
+  let air = save?.air ?? 100;
+  // Effets passagers des substances : nom -> secondes restantes.
+  const fx = { ...(save?.fx ?? {}) };
+  // Ce que rend un plant qu'on arrache : les herbes dépendent de leur variété, lue avant de casser le bloc.
+  function cropLoot(id, variant) {
+    const def = BLOCKS[id], out = [];
+    if (def.herb) {
+      const h = HERBS[variant & 3];
+      if (def.herb === 2) out.push([h.fresh, 2]);
+      out.push([h.seed, def.herb === 2 && Math.random() < 0.5 ? 2 : 1]);
+    } else {
+      out.push(def.drop ?? [id, 1]);
+      if (def.seed) out.push([def.seed, 1]);
+    }
+    return out;
+  } // oxygène, ne baisse que dans l'Éther
   let selected = save?.selected ?? 0;
   let respawnPoint = save?.respawn ?? null;
   const player = new Player(world);
@@ -317,7 +336,7 @@ function startGame({ net = null, welcome = null }) {
     ['armure', 'Bien protégé', "Porte une pièce d'armure (la chitine des scarabées suffit).", () => inv.armor.some(Boolean), 20],
     ['lanterne', 'Que la lumière soit', 'Fabrique une lanterne pour tes nuits et tes galeries.', () => has(B.LANTERN), 15],
     ['champ', 'Premier champ', 'Laboure la terre à la houe et sème des graines (les buissons en donnent).', () => has(I.WHEAT), 15],
-    ['eleveur', 'Éleveur', 'Donne du blé à un Nuaki (ou des graines à un Picore) : un petit naît.', () => flags.has('breed'), 20],
+    ['eleveur', 'Éleveur', 'Donne du blé à deux Nuakis proches (ou des graines à deux Picores) : un petit naît.', () => flags.has('breed'), 20],
     ['pain', 'Boulanger', 'Trois blés font un pain, bien plus nourrissant que des baies.', () => has(I.BREAD), 15],
     ['coffre', 'Un peu de rangement', 'Fabrique un coffre.', () => has(B.CHEST), 10],
     ['village', 'Premier contact', 'Trouve un village.', () => flags.has('village'), 25],
@@ -339,7 +358,10 @@ function startGame({ net = null, welcome = null }) {
     ['forge', 'Fusion', 'Fabrique une forge à fusion. Elle réclame 300 W : un réacteur.', () => has(B.FORGE), 100],
     ['alliage', 'Alliage stellaire', "Fonds braise, cristal et uranite dans la forge.", () => has(I.STAR), 100],
     ['ferme', 'Ferme automatique', 'Fabrique une récolteuse : elle cueille et replante toute seule.', () => has(B.HARVESTER), 60],
-    ['telepad', 'Raccourci', 'Relie deux téléporteurs alimentés et traverse.', () => flags.has('telepad'), 80],
+    ['telepad', 'Raccourci', 'Pose deux téléporteurs alimentés, choisis la destination (clic droit) et monte dessus.', () => flags.has('telepad'), 80],
+    ['herbe', 'Main verte', 'Récolte une tête de cannabis (graines chez les villageois ou dans les coffres anciens).', () => HERBS.some((h) => h.joint && has(h.fresh)), 30],
+    ['chimiste', 'Petit chimiste', 'Fabrique un décomposeur : il rend la matière à ses éléments.', () => has(B.DECOMP), 60],
+    ['synthese', 'Synthèse', 'Obtiens une substance de synthèse (le guide du sac détaille les chaînes).', () => inv.count(I.ECSTASY) > 0 || inv.count(I.COCAINE) > 0, 100],
     ['composite', 'Plus léger que l\'air', 'Compresseur : du charbon au carbone, puis aux plaques composites.', () => has(I.COMPOSITE), 60],
     ['fusee', 'Compte à rebours', 'Fabrique une fusée (le guide du sac détaille les étapes).', () => has(B.ROCKET), 120],
     ['ether', "L'Éther", 'Décolle avec 4 bidons de carburant. Emporte de l\'oxygène, et de quoi revenir.', () => flags.has('ether'), 150],
@@ -390,6 +412,8 @@ function startGame({ net = null, welcome = null }) {
   const ui = new UI(inv, icons, {
     drop: (st) => { if (!creative) dropStack(st, true); }, // en créatif, jeter hors du sac détruit l'objet
     creative: () => creative,
+    note: (text) => ui.toast(text),
+    filterRemoved: () => { give(I.FILTER, 1); closeInventory(); },
     installed: (mod) => { flags.add('mod'); ui.toast(`Module installé : ${mod.name}`); blip(1100, 0.25, 'sine', 0.06); dirty = true; },
     level: () => levelOf(player.xp),
     spend: (levels) => { flags.add('enchant'); const l = levelOf(player.xp); player.xp -= xpForLevel(l) - xpForLevel(l - levels); blip(1200, 0.3, 'sine', 0.06); dirty = true; },
@@ -551,12 +575,13 @@ function startGame({ net = null, welcome = null }) {
   let regenTimer = 4;
   function survival(dt) {
     if (creative) { player.hunger = 20; player.hp = 20; return; }
-    player.exhaust += dt * (0.02 + (input.run && player.moving && !player.sneaking ? 0.045 : 0) + (player.gliding ? 0.015 : 0));
+    if (!fx.euphoria) player.exhaust += dt * (0.02 + (input.run && player.moving && !player.sneaking ? 0.045 : 0) + (player.gliding ? 0.015 : 0));
     if (player.exhaust >= 1) { player.exhaust -= 1; player.hunger = Math.max(0, player.hunger - 1); }
     regenTimer -= dt;
     if (regenTimer <= 0) {
-      regenTimer = 4;
-      if (player.hunger >= 14 && player.hp < 20) { player.hp = Math.min(20, player.hp + 1); player.exhaust += 0.35; }
+      regenTimer = fx.regen ? 1.2 : 4;
+      if (fx.regen && player.hp < 20) player.hp = Math.min(20, player.hp + 1); // apaisé : sans condition de faim
+      else if (player.hunger >= 14 && player.hp < 20) { player.hp = Math.min(20, player.hp + 1); player.exhaust += 0.35; }
       else if (player.hunger <= 0 && player.hp > 2) damage(1, false);
     }
   }
@@ -577,6 +602,7 @@ function startGame({ net = null, welcome = null }) {
     hitPlayer: (id, dmg, kx, kz) => hitByMob(dmg, kx, kz),
     drop: (x, y, z, st) => drops.spawn({ d: dim, p: [x, y, z], v: [(Math.random() - 0.5) * 2, 3, (Math.random() - 0.5) * 2], s: st }),
     xp: (id, n) => gainXp(n),
+    born: (name) => { flags.add('breed'); ui.toast(`Un petit ${name} est né.`); blip(880, 0.2, 'triangle', 0.05); },
     tracer: (a, b) => tracer(new THREE.Vector3(a.x, a.y, a.z), new THREE.Vector3(b.x, b.y, b.z), 0xff6a6a),
   });
   function hurtMob(m, dmg, kx, kz) {
@@ -805,6 +831,7 @@ function startGame({ net = null, welcome = null }) {
       link.close = () => net.send({ t: 'tclose' });
       link.termTake = (item, n, cb) => request({ t: 'tterm', ...at, op: 'take', item, n }, (m) => cb(m.s ?? null));
       link.termPut = (st, cb) => request({ t: 'tterm', ...at, op: 'put', s: st }, (m) => cb(m.left ?? st.n));
+      link.padSet = (set) => net.send({ t: 'tpadset', ...at, set });
     } else {
       const t = sim.tileAt(dim, x, y, z, id), d0 = dim;
       sim.setOpen(d0, x, y, z, true);
@@ -814,6 +841,7 @@ function startGame({ net = null, welcome = null }) {
       link.take = (slot, n, cb) => { cb(sim.take(t, slot, n)); dirty = true; };
       link.termTake = (item, n, cb) => { cb(sim.termTake(dim, x, y, z, item, n)); link.state = sim.view(dim, x, y, z); dirty = true; };
       link.termPut = (st, cb) => { cb(sim.termPut(dim, x, y, z, st)); link.state = sim.view(dim, x, y, z); dirty = true; };
+      link.padSet = (set) => { sim.padSet(d0, x, y, z, set); dirty = true; };
     }
     return link;
   }
@@ -822,9 +850,37 @@ function startGame({ net = null, welcome = null }) {
     if (net) request({ t: 'tbucket', d: dim, x, y, z, id, bucket }, (m) => cb(m.id ?? null));
     else { cb(sim.bucket(sim.tileAt(dim, x, y, z, id), bucket)); dirty = true; }
   }
+  function mobOp(op, id, cb) {
+    if (net) request({ t: 'mob', op, id }, (m) => cb(m.res));
+    else cb(op === 'feed' ? mobSim.feed(mobSim.byId(id)) : mobSim.shear(mobSim.byId(id)));
+  }
+  // Monter sur un téléporteur réglé et alimenté suffit à partir.
+  let padStand = 0, padLock = false;
+  function padStep(dt) {
+    const bx = Math.floor(player.pos.x), by = Math.floor(player.pos.y - 0.5), bz = Math.floor(player.pos.z);
+    if (!player.onGround || world.get(bx, by, bz) !== B.TELEPAD) { padStand = 0; padLock = false; return; }
+    if (padLock || (padStand += dt) < 0.6) return;
+    padLock = true;
+    const here = dim;
+    padOp(bx, by, bz, (res) => {
+      if (!res || dim !== here) return;
+      if (res.err) { ui.toast({ off: "Ce téléporteur n'est pas alimenté (15 W).", unset: 'Pas de destination : clic droit sur le téléporteur pour la choisir.', destoff: "Le téléporteur d'arrivée n'est pas alimenté." }[res.err]); return; }
+      flags.add('telepad');
+      fade.classList.add('on'); setTimeout(() => fade.classList.remove('on'), 180);
+      world.ensure(res.x, res.z, 2);
+      const dest = { x: res.x + 0.5, y: res.y + 1, z: res.z + 0.5 };
+      player.teleport(dest);
+      player.safe = { ...dest };
+      blip(1300, 0.3, 'sine', 0.07); blip(650, 0.4, 'sine', 0.05);
+    });
+  }
   function padOp(x, y, z, cb) {
     if (net) request({ t: 'tpad', d: dim, x, y, z }, (m) => cb(m.res ?? null));
     else cb(sim.padDest(dim, x, y, z));
+  }
+  function filterOp(x, y, z, side, o, cb, d = dim) {
+    if (net) request({ t: 'tfilter', d, x, y, z, side, o }, (m) => cb(m.res ?? null));
+    else { const res = sim.filterOp(d, x, y, z, side, o); cb(Array.isArray(res) ? [...res] : res); dirty = true; }
   }
   function wrenchOp(x, y, z, side, cb) {
     if (net) request({ t: 'twrench', d: dim, x, y, z, side }, (m) => cb(m.res ?? null));
@@ -857,14 +913,14 @@ function startGame({ net = null, welcome = null }) {
   const C = I.COIN;
   const TRADES = [
     [ // Céliens : cultivateur, forgeron, érudit
-      [[[C, 1], [I.BERRIES, 6]], [[C, 2], [I.WHEAT, 8]], [[I.SEEDS, 4], [C, 1]], [[C, 2], [I.MEAT_COOKED, 3]], [[C, 2], [I.FEATHER, 6]], [[C, 1], [B.WOOL, 4]], [[C, 1], [I.MUSHROOM, 4]], [[I.BUCKET, 1], [C, 4]], [[I.SEED_COAL, 1], [C, 14]], [[B.BEACON, 1], [C, 8]]],
+      [[[C, 1], [I.BERRIES, 6]], [[C, 2], [I.WHEAT, 8]], [[I.SEEDS, 4], [C, 1]], [[C, 2], [I.MEAT_COOKED, 3]], [[C, 2], [I.FEATHER, 6]], [[C, 1], [B.WOOL, 4]], [[401, 1], [C, 6]], [[402, 1], [C, 8]], [[C, 1], [I.MUSHROOM, 4]], [[I.BUCKET, 1], [C, 4]], [[I.SEED_COAL, 1], [C, 14]], [[B.BEACON, 1], [C, 8]]],
       [[[C, 1], [I.COAL, 8]], [[C, 2], [B.IRON_ORE, 4]], [[C, 2], [B.COPPER_ORE, 4]], [[I.IRON, 2], [C, 3]], [[I.WRENCH, 1], [C, 5]], [[I.SHEARS, 1], [C, 4]], [[I.PLATE, 4], [C, 7]], [[I.SEED_IRON, 1], [C, 20]]],
       [[[C, 3], [B.CRYSTAL, 2]], [[C, 2], [I.DUST, 2]], [[B.CRYSTAL, 1], [C, 4]], [[I.CIRCUIT, 2], [C, 9]], [[B.ALTAR, 1], [C, 16]], [[I.SEED_CRYSTAL, 1], [C, 26]]],
     ],
     [ // Cendreux : récupérateur, fondeur, sourcier
       [[[C, 3], [I.COPPER, 4]], [[C, 4], [I.CIRCUIT, 1]], [[C, 2], [I.MEAT_COOKED, 2]], [[I.EMBER_SHARD, 2], [C, 8]], [[B.BASALT, 16], [C, 3]]],
       [[[C, 5], [I.PLATE, 4]], [[C, 3], [I.CELL, 1]], [[B.URANITE, 1], [C, 10]], [[B.CASING, 4], [C, 12]], [[I.SEED_EMBER, 1], [C, 30]]],
-      [[[C, 4], [I.BUCKET_WATER, 1]], [[I.BUCKET_LAVA, 1], [C, 5]], [[B.TANK, 1], [C, 9]], [[I.SEED_URANITE, 1], [C, 40]], [[I.ROD, 1], [C, 24]]],
+      [[[C, 4], [I.BUCKET_WATER, 1]], [[403, 1], [C, 10]], [[404, 1], [C, 12]], [[I.BUCKET_LAVA, 1], [C, 5]], [[B.TANK, 1], [C, 9]], [[I.SEED_URANITE, 1], [C, 40]], [[I.ROD, 1], [C, 24]]],
     ],
   ];
   const JOBS = [['Cultivateur', 'Forgeron', 'Érudit'], ['Récupérateur', 'Fondeur', 'Sourcier']];
@@ -1083,7 +1139,7 @@ function startGame({ net = null, welcome = null }) {
       const data = {
         dim, selected, inv, respawn: respawnPoint,
         pos: player.onGround ? player.pos : player.safe, yaw: player.yaw, pitch: player.pitch,
-        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air, owed: trip ? 1 : 0,
+        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air, fx, owed: trip ? 1 : 0,
       };
       if (multi) net.send({ t: 'save', data });
       if (!multi) Object.assign(data, { seed, time: sky.time, clock: sky.clock, sim, edits: editsByDim.map((m) => [...m].map(([key, mm]) => [key, [...mm].flat()])) });
@@ -1103,6 +1159,7 @@ function startGame({ net = null, welcome = null }) {
     net.on('m', (m) => { if (m.d === dim) mobView.sync(m.r); });
     net.on('hurt', (m) => hitByMob(m.dmg, m.kx, m.kz));
     net.on('xp', (m) => gainXp(m.n));
+    net.on('born', (m) => { if (m.d !== dim) return; flags.add('breed'); ui.toast(`Un petit ${m.name} est né.`); });
     net.on('fx', (m) => tracer(new THREE.Vector3(...m.a), new THREE.Vector3(...m.b), 0xff6a6a));
     net.on('set', (m) => {
       applyingRemote = true;
@@ -1183,6 +1240,7 @@ function startGame({ net = null, welcome = null }) {
     const tierOk = !def.tier || (right && tool.tier >= def.tier);
     let time = def.hard;
     if (right) time /= tool.speed * (1 + 0.3 * (held.e?.eff ?? 0));
+    if (fx.rush) time /= 1.8;
     if (!tierOk) time *= 3;
     if (creative) time = 0.12;
     return { time, drop: tierOk };
@@ -1210,9 +1268,11 @@ function startGame({ net = null, welcome = null }) {
     const def = BLOCKS[target.id], info = breakInfo(def, held);
     // Une culture ne tient pas sans son bloc de terre : elle part avec lui.
     const above = world.get(target.x, target.y + 1, target.z);
-    if (PASS.has(above)) { world.setBlock(target.x, target.y + 1, target.z, 0); if (!creative) { give(...(BLOCKS[above].drop ?? [above, 1])); if (BLOCKS[above].seed) give(BLOCKS[above].seed, 1); } }
+    if (PASS.has(above)) { const loot = cropLoot(above, world.vis.get(target.x + ',' + (target.y + 1) + ',' + target.z) ?? 0); world.setBlock(target.x, target.y + 1, target.z, 0); if (!creative) for (const l of loot) give(...l); }
+    const herbLoot = def.herb ? cropLoot(target.id, world.vis.get(target.x + ',' + target.y + ',' + target.z) ?? 0) : null;
     world.setBlock(target.x, target.y, target.z, 0);
     if (def.noDrop || creative) { /* réservoir : il tombe de lui-même avec son contenu ; créatif : rien à ramasser */ }
+    else if (herbLoot) { for (const l of herbLoot) give(...l); }
     else if (info.drop) {
       const [id, n] = def.drop ?? [target.id, 1];
       const ore = ORE_XP[target.id];
@@ -1269,7 +1329,7 @@ function startGame({ net = null, welcome = null }) {
       mineProg = 0;
       if (actionCd <= 0) {
         const tool = usableTool(held);
-        hurtMob(mobTarget, tool ? tool.dmg + 2 * (held.e?.sharp ?? 0) : 1, dir.x, dir.z);
+        hurtMob(mobTarget, (tool ? tool.dmg + 2 * (held.e?.sharp ?? 0) : 1) * (fx.rush ? 1.5 : 1), dir.x, dir.z);
         if (tool) wearTool(selected);
         player.exhaust += 0.05;
         swing = 1; snd.swing();
@@ -1298,21 +1358,22 @@ function startGame({ net = null, welcome = null }) {
   function secondary() {
     const heldNow = inv.slots[selected], heldIt = heldNow && ITEMS[heldNow.id];
     if (mobTarget?.def.villager) { input.use = false; openTrade(mobTarget); return; }
-    // Élevage : nourrir une bête avec ce qu'elle aime, ou la tondre.
+    // Élevage : nourrir une bête avec ce qu'elle aime, ou la tondre. C'est la simulation qui dit si ça prend.
     if (mobTarget && heldNow && (mobTarget.def.breed === heldNow.id || (heldNow.id === I.SHEARS && mobTarget.def.wool))) {
-      const feed = heldNow.id !== I.SHEARS;
-      let ok = true;
-      if (net) net.send({ t: feed ? 'feed' : 'shear', id: mobTarget.id });
-      else ok = feed ? mobSim.feed(mobSim.byId(mobTarget.id)) : mobSim.shear(mobSim.byId(mobTarget.id));
-      if (!ok) ui.toast(feed ? `${mobTarget.def.name} n'a plus faim pour l'instant.` : 'Sa laine n\'a pas encore repoussé.');
-      else if (feed) {
-        if (!creative && --heldNow.n <= 0) inv.slots[selected] = null;
-        flags.add('breed');
-        if (!net) ui.toast(`Un petit ${mobTarget.def.name} est né.`);
-        blip(740, 0.18, 'triangle', 0.05);
-        ui.refreshHotbar(selected);
-      } else snd.swing();
-      swing = 1; useCd = 0.5; dirty = true;
+      const feed = heldNow.id !== I.SHEARS, name = mobTarget.def.name, slot = selected, food = heldNow.id;
+      mobOp(feed ? 'feed' : 'shear', mobTarget.id, (res) => {
+        if (feed) {
+          if (res === 'ok') {
+            const st = inv.slots[slot];
+            if (!creative && st && st.id === food && --st.n <= 0) inv.slots[slot] = null;
+            ui.toast(`${name} est comblé : nourris-en un second tout près.`);
+            blip(740, 0.18, 'triangle', 0.05);
+            ui.refreshHotbar(selected);
+          } else ui.toast(res === 'baby' ? `Ce ${name} est encore trop jeune.` : `${name} n'a pas faim pour l'instant.`);
+        } else if (res) snd.swing(); else ui.toast("Rien à tondre : la laine n'a pas repoussé.");
+        dirty = true;
+      });
+      swing = 1; useCd = 0.5;
       return;
     }
     // Seau vide : puiser un liquide du monde.
@@ -1327,6 +1388,30 @@ function startGame({ net = null, welcome = null }) {
     }
     if (target) {
       const { x, y, z, id } = target;
+      if (heldNow?.id === I.FILTER && (id === B.ITEM_PIPE || id === B.FLUID_PIPE)) {
+        // Filtre en main : il se fixe sur le raccord visé.
+        const side = pipeSide(target), slot = selected;
+        if (side < 0) ui.toast("Un filtre se pose sur le raccord d'un tuyau avec une machine.");
+        else filterOp(x, y, z, side, { op: 'add' }, (ok) => {
+          if (!ok) { ui.toast("Un filtre se pose sur le raccord d'un tuyau avec une machine, un seul par raccord."); return; }
+          const st = inv.slots[slot];
+          if (!creative && st?.id === I.FILTER && --st.n <= 0) inv.slots[slot] = null;
+          ui.toast('Filtre posé : clic droit dessus pour le régler.');
+          ui.refreshHotbar(selected);
+        });
+        blip(700, 0.06, 'square', 0.04); swing = 1; useCd = 0.4;
+        return;
+      }
+      if ((id === B.ITEM_PIPE || id === B.FLUID_PIPE) && heldNow?.id !== I.WRENCH && !input.sneak) {
+        // Raccord filtré : clic droit ouvre le filtre.
+        const side = pipeSide(target);
+        if (side >= 0 && ((world.vis.get(x + ',' + y + ',' + z) ?? 0) >> (12 + side)) & 1) {
+          input.use = false;
+          const d0 = dim, link = { slots: [], fluid: id === B.FLUID_PIPE, op: (o, cb) => filterOp(x, y, z, side, o, cb, d0) };
+          filterOp(x, y, z, side, { op: 'get' }, (res) => { if (Array.isArray(res)) { link.slots = res; openInventory({ filter: link }); snd.open(false); } });
+          return;
+        }
+      }
       if (heldNow?.id === I.WRENCH && isPipe(id)) {
         // Clé sur un tuyau ou un câble : règle le raccord du côté visé.
         const side = pipeSide(target);
@@ -1373,22 +1458,6 @@ function startGame({ net = null, welcome = null }) {
         ui.refreshHotbar(selected);
         return;
       }
-      else if (id === B.TELEPAD) {
-        const here = dim;
-        padOp(x, y, z, (res) => {
-          if (!res || dim !== here) return;
-          if (res.err) { ui.toast(res.err === 'off' ? 'Ce téléporteur n\'est pas alimenté (15 W).' : 'Aucun autre téléporteur alimenté dans ce monde.'); return; }
-          flags.add('telepad');
-          fade.classList.add('on'); setTimeout(() => fade.classList.remove('on'), 180);
-          world.ensure(res.x, res.z, 2);
-          const dest = { x: res.x + 0.5, y: res.y + 0.3, z: res.z + 0.5 };
-          player.teleport(dest);
-          player.safe = { ...dest };
-          blip(1300, 0.3, 'sine', 0.07); blip(650, 0.4, 'sine', 0.05);
-        });
-        useCd = 0.8;
-        return;
-      }
       else if (id === B.MODBENCH) { input.use = false; snd.open(false); openInventory({ altar: 'mods' }); return; }
       else if (id === B.CASING) {
         // Un blindage ouvre le cœur du réacteur qu'il protège.
@@ -1430,6 +1499,17 @@ function startGame({ net = null, welcome = null }) {
       blip(760, 0.12, 'square', 0.05); swing = 1; useCd = 0.6;
       return;
     }
+    if (it.fx) {
+      // Substance : un effet passager. En reprendre rallonge la durée, jusqu'à cinq minutes.
+      const [k, t] = it.fx;
+      fx[k] = Math.min(300, (fx[k] ?? 0) + t);
+      if (!creative && --held.n <= 0) inv.slots[selected] = null;
+      ui.toast(`${FX[k].name} : ${FX[k].tip}.`);
+      blip(420, 0.25, 'sine', 0.05); blip(630, 0.35, 'sine', 0.04);
+      swing = 1; useCd = 0.6; dirty = true;
+      ui.refreshHotbar(selected);
+      return;
+    }
     if (it.food) {
       if (player.hunger >= 20) return;
       player.hunger = Math.min(20, player.hunger + it.food);
@@ -1467,7 +1547,11 @@ function startGame({ net = null, welcome = null }) {
     }
     if (it.plant && target) {
       if (target.id !== B.FARMLAND) { ui.toast("Graines et germes se plantent sur de la terre labourée (à la houe)."); useCd = 0.5; return; }
-      if (world.get(target.x, target.y + 1, target.z) || !world.setBlock(target.x, target.y + 1, target.z, it.plant)) return;
+      if (world.get(target.x, target.y + 1, target.z)) return;
+      // Une herbe garde sa variété dans l'état du bloc.
+      const pk = target.x + ',' + (target.y + 1) + ',' + target.z;
+      if (it.variant) { world.vis.set(pk, it.variant); placeMeta = { rot: it.variant }; }
+      if (!world.setBlock(target.x, target.y + 1, target.z, it.plant)) { placeMeta = null; if (it.variant) world.vis.delete(pk); return; }
       if (!creative && --held.n <= 0) inv.slots[selected] = null;
       snd.place('soft'); swing = 1; dirty = true; useCd = 0.25;
       ui.refreshHotbar(selected);
@@ -1585,11 +1669,13 @@ function startGame({ net = null, welcome = null }) {
       // Ce que le sac et l'armure changent au corps : planeur, modules bioniques, pesanteur du monde.
       player.glide = dim === 2 ? null : inv.glider(); // pas d'air dans l'Éther : rien ne porte une voile
       if (player.glide) wing.material.color.setHex(GLIDER_COLOR[player.glide.tier]);
-      player.gravityK = dim === 2 ? 0.3 : 1;
-      player.speedK = inv.hasMod('speed') ? 1.3 : 1;
-      player.jumpK = inv.hasMod('spring') ? 1.4 : 1;
+      for (const k in fx) if ((fx[k] -= dt) <= 0) { delete fx[k]; ui.toast(`${FX[k]?.name ?? 'Effet'} : l'effet se dissipe.`); dirty = true; }
+      player.gravityK = (dim === 2 ? 0.3 : 1) * (fx.light ? 0.55 : 1);
+      player.speedK = (inv.hasMod('speed') ? 1.3 : 1) * (fx.euphoria ? 1.35 : 1) * (fx.rush ? 1.2 : 1);
+      player.jumpK = (inv.hasMod('spring') ? 1.4 : 1) * (fx.euphoria ? 1.2 : 1);
+      bloom.strength += ((fx.euphoria ? 1.1 : 0.5) - bloom.strength) * Math.min(1, dt * 2);
       player.pickR2 = inv.hasMod('magnet') ? 36 : 2.4;
-      shade.uMin.value += ((inv.hasMod('night') ? (dim === 0 && !sky.night ? 0.12 : 0.5) : 0.035) - shade.uMin.value) * Math.min(1, dt * 4);
+      shade.uMin.value += ((inv.hasMod('night') || fx.vision ? (dim === 0 && !sky.night ? 0.12 : 0.5) : 0.035) - shade.uMin.value) * Math.min(1, dt * 4);
       // Oxygène : deux minutes et demie d'autonomie dans l'Éther, puis une cartouche part toute seule.
       if (dim === 2 && !creative && !inv.hasMod('air')) {
         air -= dt * (100 / 150);
@@ -1608,7 +1694,7 @@ function startGame({ net = null, welcome = null }) {
       const impact = trip ? 0 : player.update(dt, playing ? input : IDLE);
       if (impact > 5) snd.land(impact);
       if (!wasWet !== !player.inLiquid) snd.splash();
-      if (impact > 15 && !inv.hasMod('spring')) damage((impact - 15) * 0.9 * (1 - 0.25 * (inv.armor[3]?.e?.feather ?? 0)), false);
+      if (impact > 15 && !inv.hasMod('spring') && !fx.light) damage((impact - 15) * 0.9 * (1 - 0.25 * (inv.armor[3]?.e?.feather ?? 0)), false);
 
       if (player.pos.y < -14) {
         const safe = player.safe ?? homeSpawn();
@@ -1626,6 +1712,7 @@ function startGame({ net = null, welcome = null }) {
       if (startHint && playing) { startHint = false; ui.toast('Frappe un tronc pour récolter du bois, puis ouvre ton sac avec E.'); }
 
       survival(dt);
+      if (playing) padStep(dt);
       if (mobSim) {
         mobSim.update(dt, { dim, night: sky.night, players: [{ id: 0, pos: player.pos, alive: mode !== 'dead' }], safe: safeSpot, turrets: world.turrets });
         mobView.sync(mobSim.rows());
@@ -1746,7 +1833,7 @@ function startGame({ net = null, welcome = null }) {
       bossEl.classList.toggle('hidden', !boss);
       if (boss) { bossEl.firstChild.textContent = boss.def.name; bossEl.querySelector('i').style.width = Math.max(0, (boss.hp / boss.def.hp) * 100) + '%'; }
       const online = compassLine() + (multi ? `<br>${remotes.map.size + 1} en ligne` : '') + (inv.armor[1] && ITEMS[inv.armor[1].id].charge ? `<br>Réacteur dorsal ${Math.round(((inv.armor[1].c ?? 0) / ITEMS[inv.armor[1].id].charge.max) * 100)} %` : '');
-      info.innerHTML = `ALTITUDE <b>${Math.max(0, Math.round(player.pos.y))}</b><br>${DIMS[dim]} · ${biome}${player.fly ? ' · en vol' : state}${creative ? '<br>MODE CRÉATIF' : ''}${dim === 2 && !creative ? `<br>OXYGÈNE <b>${inv.hasMod('air') ? '∞' : Math.ceil(air) + ' %'}</b>` : ''}<br>${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${sky.night && dim === 0 ? ' · nuit' : ''}${online}`;
+      info.innerHTML = `ALTITUDE <b>${Math.max(0, Math.round(player.pos.y))}</b><br>${DIMS[dim]} · ${biome}${player.fly ? ' · en vol' : state}${creative ? '<br>MODE CRÉATIF' : ''}${Object.keys(fx).map((k) => `<br>${FX[k]?.name ?? k} ${Math.floor(fx[k] / 60)}:${String(Math.floor(fx[k] % 60)).padStart(2, '0')}`).join('')}${dim === 2 && !creative ? `<br>OXYGÈNE <b>${inv.hasMod('air') ? '∞' : Math.ceil(air) + ' %'}</b>` : ''}<br>${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${sky.night && dim === 0 ? ' · nuit' : ''}${online}`;
     }
     if (dirty && (saveTimer -= dt) <= 0) { saveTimer = 5; persist(); }
 
@@ -1764,7 +1851,7 @@ function startGame({ net = null, welcome = null }) {
     get target() { return target; },
     get mode() { return mode; },
     get dim() { return dim; },
-    get creative() { return creative; }, get trip() { return trip; }, launch, command, say, openChat,
+    get creative() { return creative; }, fx, get trip() { return trip; }, launch, command, say, openChat,
     player, sky, inv, camera, input, mobs: mobSim, mobView, fluids, ui, give, travel, damage, remotes, net, sim, drops, dropStack, blast, B, I, modelView, snd,
     select(i) { selected = i; ui.refreshHotbar(i); },
     tick(ms) { frame(last + ms); },

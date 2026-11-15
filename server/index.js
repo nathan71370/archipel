@@ -98,7 +98,7 @@ const sim = new Sim({
   power: (d) => broadcast({ t: 'pw', d, keys: [...sim.dims[d].powered] }),
   active: (d) => broadcast({ t: 'act', d, keys: [...sim.dims[d].active] }),
   vis: (d, k, v) => broadcast({ t: 'vis', d, k, v }),
-  setBlock: (d, x, y, z, id) => applySet(d, x, y, z, id),
+  setBlock: (d, x, y, z, id, meta) => applySet(d, x, y, z, id, meta),
   explode,
 });
 edits.forEach((m, d) => sim.loadEdits(d, m));
@@ -109,6 +109,7 @@ const mobs = worlds.map((w, d) => new MobSim(w, {
   hitPlayer: (id, dmg, kx, kz) => sendTo(id, { t: 'hurt', dmg, kx, kz }),
   drop: (x, y, z, s) => spawnDrop(d, x, y, z, s, false),
   xp: (id, n) => sendTo(id, { t: 'xp', n }),
+  born: (name) => broadcast({ t: 'born', d, name }),
   tracer: (a, b) => { const data = { t: 'fx', a: [a.x, a.y, a.z], b: [b.x, b.y, b.z] }; for (const [ws, p] of players) if (p.s?.[0] === d && ws.readyState === 1) ws.send(JSON.stringify(data)); },
 }));
 
@@ -192,7 +193,7 @@ function onMessage(ws, raw) {
       if (Array.isArray(m.s) && m.s.length >= 8 && m.s.length <= 14 && m.s.every((v) => typeof v === 'number' && Number.isFinite(v)) && okDim(m.s[0])) me.s = m.s;
       break;
     case 'set':
-      if (at(m) && int(m.id) && m.id >= 0 && m.id < 256) {
+      if (at(m) && int(m.id) && m.id >= 0 && m.id < 400) {
         const info = m.meta && typeof m.meta === 'object' ? { src: m.meta.src | 0, rot: m.meta.rot & 3, f: m.meta.f && Number.isFinite(m.meta.f.amt) ? { id: m.meta.f.id | 0, amt: m.meta.f.amt } : undefined } : undefined;
         applySet(m.d, m.x, m.y, m.z, m.id, info, ws);
       }
@@ -202,8 +203,14 @@ function onMessage(ws, raw) {
       if (mob && typeof m.dmg === 'number' && m.dmg > 0 && m.dmg <= 40 && Math.hypot(mob.pos.x - me.s[1], mob.pos.z - me.s[3]) < 80) mobs[me.s[0]].hurt(mob, m.dmg, Number(m.kx) || 0, Number(m.kz) || 0, me.id);
       break;
     }
-    case 'feed': if (me.s) mobs[me.s[0]].feed(mobs[me.s[0]].byId(m.id)); break;
-    case 'shear': if (me.s) mobs[me.s[0]].shear(mobs[me.s[0]].byId(m.id)); break;
+    case 'mob': { // nourrir ou tondre : le serveur décide, le joueur ne perd son blé que si ça prend
+      const ms = me.s && mobs[me.s[0]], mob = ms?.byId(m.id);
+      const near = mob && Math.hypot(mob.pos.x - me.s[1], mob.pos.y - me.s[2], mob.pos.z - me.s[3]) < 8;
+      reply(ws, m, { res: !near ? (m.op === 'feed' ? 'no' : false) : m.op === 'feed' ? ms.feed(mob) : ms.shear(mob) });
+      break;
+    }
+    case 'tfilter': reply(ws, m, { res: at(m) && m.o && typeof m.o === 'object' ? sim.filterOp(m.d, m.x, m.y, m.z, m.side | 0, { op: String(m.o.op), i: m.o.i | 0, id: m.o.id | 0 }) : null }); worldDirty = true; break;
+    case 'tpadset': if (at(m) && m.set && typeof m.set === 'object') { sim.padSet(m.d, m.x, m.y, m.z, m.set); worldDirty = true; } break;
     case 'tpad': reply(ws, m, { res: at(m) ? sim.padDest(m.d, m.x, m.y, m.z) : null }); break;
     case 'summon': // appât du Colosse, dans la Braise seulement
       if (me.s && me.s[0] === 1 && [m.x, m.y, m.z].every(Number.isFinite) && Math.hypot(m.x - me.s[1], m.z - me.s[3]) < 12) mobs[1].summon(m.x, m.y, m.z);

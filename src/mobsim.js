@@ -42,7 +42,7 @@ export class MobSim {
       id: this.nextId++, type, def, job,
       pos: { x, y, z }, vel: { x: 0, y: 0, z: 0 }, hw: def.hw, h: def.h,
       hp: def.hp, yaw: Math.random() * 6.28, wyaw: 0, walk: false, think: 0, cd: 0, flash: 0, flee: 0, strike: 0, chasing: false,
-      onGround: false, hitWall: false, home: null, alt: y, love: 0, wool: 0,
+      onGround: false, hitWall: false, home: null, alt: y, love: 0, cool: 0, baby: 0, wool: 0,
     };
     this.list.push(m);
     return m;
@@ -63,8 +63,8 @@ export class MobSim {
     m.vel.x = kx * 6; m.vel.z = kz * 6; m.vel.y = 5;
     if (!m.def.hostile) m.flee = 5;
     if (m.hp > 0) return false;
-    if (m.def.xp && by != null) this.hooks.xp(by, m.def.xp);
-    for (const [id, min, max] of m.def.drops) {
+    if (m.def.xp && by != null && !(m.baby > 0)) this.hooks.xp(by, m.def.xp);
+    for (const [id, min, max] of m.baby > 0 ? [] : m.def.drops) {
       const n = min + Math.floor(Math.random() * (max - min + 1));
       if (n > 0) this.hooks.drop(m.pos.x, m.pos.y + 0.4, m.pos.z, { id, n });
     }
@@ -72,16 +72,18 @@ export class MobSim {
     return true;
   }
 
-  // Nourrir une bête avec ce qu'elle aime : un petit naît à côté d'elle (pas plus d'une fois par minute et demie).
+  // Nourrir une bête : pendant 40 secondes elle cherche un partenaire nourri lui aussi.
+  // Renvoie 'ok', 'baby' (trop jeune), 'wait' (déjà nourrie ou au repos) ou 'no'.
   feed(m) {
-    if (!m || !m.def.breed || m.love > 0 || this.count(false, m.pos) >= 14) return false;
-    m.love = 90;
-    this.spawn(m.type, m.pos.x + (Math.random() - 0.5), m.pos.y + 0.2, m.pos.z + (Math.random() - 0.5)).love = 90;
-    return true;
+    if (!m || !m.def.breed) return 'no';
+    if (m.baby > 0) return 'baby';
+    if (m.love > 0 || m.cool > 0 || this.count(false, m.pos) >= 16) return 'wait';
+    m.love = 40;
+    return 'ok';
   }
   // Tondre : de la laine tombe, qui repousse en deux minutes.
   shear(m) {
-    if (!m || !m.def.wool || m.wool > 0) return false;
+    if (!m || !m.def.wool || m.wool > 0 || m.baby > 0) return false;
     m.wool = 120;
     this.hooks.drop(m.pos.x, m.pos.y + 0.6, m.pos.z, { id: B.WOOL, n: 1 + Math.floor(Math.random() * 2) });
     return true;
@@ -206,7 +208,9 @@ export class MobSim {
       }
       if (far > (m.home ? 130 : def.boss ? 220 : 90) || m.pos.y < -20) { this.remove(m); continue; }
       if (!w.ready(m.pos.x, m.pos.z)) continue;
-      m.cd -= dt; m.flash -= dt; m.think -= dt; m.love -= dt; m.wool -= dt; m.strike = Math.max(0, m.strike - dt);
+      m.cd -= dt; m.flash -= dt; m.think -= dt; m.love -= dt; m.cool -= dt; m.wool -= dt;
+      // Un petit devient adulte après quatre minutes.
+      if (m.baby > 0 && (m.baby -= dt) <= 0) { m.hw = def.hw; m.h = def.h; } m.strike = Math.max(0, m.strike - dt);
       dist = dist || 0.001;
       const dx = P ? P.pos.x - m.pos.x : 0, dz = P ? P.pos.z - m.pos.z : 0, dy = P ? P.pos.y - m.pos.y : 0;
 
@@ -248,6 +252,20 @@ export class MobSim {
           }
         }
         if (dist < reach && Math.abs(dy) < reach + 0.4 && m.cd <= 0) { m.cd = 1.1; m.strike = 0.3; this.hooks.hitPlayer(P.id, def.dmg, dx / dist, dz / dist); }
+      } else if (m.love > 0 && !(m.flee > 0)) {
+        // Nourrie : elle cherche un partenaire nourri lui aussi, le rejoint, et un petit naît.
+        let mate = null, md = 12;
+        for (const o of this.list) {
+          if (o === m || o.type !== m.type || !(o.love > 0)) continue;
+          const d2 = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+          if (d2 < md) { md = d2; mate = o; }
+        }
+        if (mate && md < 1.4) {
+          const kid = this.spawn(m.type, (m.pos.x + mate.pos.x) / 2, m.pos.y + 0.2, (m.pos.z + mate.pos.z) / 2);
+          kid.baby = 240; kid.hw = def.hw * 0.5; kid.h = def.h * 0.5;
+          m.love = mate.love = 0; m.cool = mate.cool = 120;
+          this.hooks.born?.(def.name);
+        } else if (mate) { wx = (mate.pos.x - m.pos.x) / md; wz = (mate.pos.z - m.pos.z) / md; speed *= 1.4; }
       } else if (m.flee > 0 && P) {
         m.flee -= dt; wx = -dx / dist; wz = -dz / dist; speed *= 2.4;
       } else {
@@ -286,6 +304,6 @@ export class MobSim {
   // État compact envoyé aux joueurs : [id, type, métier, x, y, z, cap, touché, frappe, en chasse, vie]
   rows() {
     const r = (n) => Math.round(n * 100) / 100;
-    return this.list.map((m) => [m.id, m.type, m.job, r(m.pos.x), r(m.pos.y), r(m.pos.z), r(m.yaw), m.flash > 0 ? 1 : 0, m.strike > 0 ? 1 : 0, m.chasing ? 1 : 0, Math.ceil(m.hp)]);
+    return this.list.map((m) => [m.id, m.type, m.job, r(m.pos.x), r(m.pos.y), r(m.pos.z), r(m.yaw), m.flash > 0 ? 1 : 0, m.strike > 0 ? 1 : 0, m.chasing ? 1 : 0, Math.ceil(m.hp), m.baby > 0 ? 1 : 0, m.love > 0 ? 1 : 0]);
   }
 }

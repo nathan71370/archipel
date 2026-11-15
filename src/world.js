@@ -5,16 +5,16 @@ import { MODEL, MODEL_DIRS, itemQuads } from './models.js';
 import { sideOf } from './sim.js';
 
 // Les liquides ne bloquent ni le joueur ni la vue.
-const LIQ = new Uint8Array(256);
+const LIQ = new Uint8Array(512);
 for (const id of LIQUID) LIQ[id] = 1;
 // Ce qu'on traverse : liquides et cultures.
-const SOFT = new Uint8Array(256);
+const SOFT = new Uint8Array(512);
 for (const id of LIQUID) SOFT[id] = 1;
 for (const id of PASS) SOFT[id] = 1;
 // Lumière : ce qui l'arrête, et ce qui en émet (0 à 15).
-const OPAQUE = new Uint8Array(256), EMIT = new Uint8Array(256);
+const OPAQUE = new Uint8Array(512), EMIT = new Uint8Array(512);
 // SEE : ce à travers quoi on voit (liquides, verre) ; ces blocs ne cachent pas leurs voisins.
-const SEE = new Uint8Array(256);
+const SEE = new Uint8Array(512);
 for (const id of LIQUID) SEE[id] = 1;
 for (const id of CLEAR) SEE[id] = 1;
 MODEL.forEach((m, id) => { if (m) SEE[id] = 1; }); // un modèle ne remplit pas son cube : il ne cache ni ses voisins ni la lumière
@@ -22,7 +22,7 @@ BLOCKS.forEach((def, id) => { if (def && !SEE[id]) OPAQUE[id] = 1; });
 Object.entries({ [B.CRYSTAL]: 13, [B.EMBER]: 13, [B.LAVA]: 14, [B.CAP]: 11, [B.BEACON]: 14, [B.PORTAL]: 11, [B.URANITE]: 7, [B.ALTAR]: 9, [B.CORE]: 8, [B.LANTERN]: 14, [B.TORCH]: 12 }).forEach(([id, l]) => { EMIT[id] = l; });
 for (let l = 1; l <= 7; l++) EMIT[70 + l] = 12;
 // Modèles plus hauts que leur bloc : nombre de cases au-dessus par lesquelles on peut aussi les viser.
-const TALL = new Uint8Array(256);
+const TALL = new Uint8Array(512);
 TALL[B.ROCKET] = 2; TALL[B.LIGHTHOUSE] = 1; TALL[B.TURBINE] = 1;
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
@@ -93,7 +93,7 @@ export function recordEdit(edits, x, y, z, id) {
 class Chunk {
   constructor(cx, cz) {
     this.cx = cx; this.cz = cz;
-    this.data = new Uint8Array(CS * CS * WY);
+    this.data = new Uint16Array(CS * CS * WY); // identifiants de blocs jusqu'à 511
     this.minY = WY; this.maxY = -1;
     this.meshes = [];
     this.dirty = true;
@@ -856,7 +856,7 @@ export class World {
             else if (id !== B.CABLE) deco |= m << (i * 2);
             mask |= 1 << i;
           }
-          quads = model.dyn(mask, deco);
+          quads = model.dyn(mask, deco, ((v ?? 0) >> 12) & 63);
         } else quads = model.rq[(v ?? 0) & 3];
         if (model.anim) anims.push({ x: x0 + lx, y, z: z0 + lz, id, rot: (v ?? 0) & 3 });
         const lb = L8[(y * CS + lz) * CS + lx], sk = (lb >> 4) / 15, bl = (lb & 15) / 15;

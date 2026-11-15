@@ -14,6 +14,7 @@ export const B = {
   FORGE: 88, CONDENSER: 89, LIGHTHOUSE: 90, FARMLAND: 91, CROP1: 92, CROP2: 93, CROP3: 94,
   TORCH: 95, HAMMOCK: 96, BOUNCE: 97, MOONDUST: 98, MOONROCK: 99, TITAN_ORE: 60,
   COMPRESSOR: 68, REFINERY: 69, ELECTRO: 70, ROCKET: 78, MODBENCH: 79, ALLOY: 207, CANNER: 208,
+  HERB1: 252, HERB2: 253, DRYER: 256, DECOMP: 257, EXTRACTOR: 258, SYNTH: 259,
   HARVESTER: 209, SPRINKLER: 245, TELEPAD: 246, WOOL: 247, STEEL_BLOCK: 248, MOONBRICK: 249,
   ORE_CROP: 210, // 210 à 221 : pousse puis plant mûr de chacun des six germes de minerai
 };
@@ -38,7 +39,28 @@ export const I = {
   GLIDER1: 222, GLIDER2: 223, GLIDER3: 224, GLIDER4: 241, CARBON: 225, COMPOSITE: 226, FUEL: 227, OXY: 228, TITAN: 229,
   BIO_HELM: 230, BIO_CHEST: 231, BIO_LEGS: 232, BIO_BOOTS: 233,
   MOD_NIGHT: 234, MOD_AIR: 235, MOD_MAGNET: 236, MOD_SHIELD: 237, MOD_SPEED: 238, MOD_SPRING: 239, ENGINE: 240, STEEL: 242, ELECTRUM: 243, CAN: 244, SHEARS: 250,
+  // Au-delà de 255 les blocs prennent le relais (256 à 399) ; les objets reprennent à 400.
+  FILTER: 400,
+  SEED_H0: 401, SEED_H1: 402, SEED_H2: 403, SEED_H3: 404, BUD0: 405, BUD1: 406, BUD2: 407, COCA_LEAF: 408,
+  DRY0: 409, DRY1: 410, DRY2: 411, DRY_COCA: 412, RESIN: 413, PASTE: 414,
+  E_C: 415, E_H: 416, E_O: 417, E_N: 418, BASE: 419, ECSTASY: 420, COCAINE: 421,
+  JOINT0: 422, JOINT1: 423, JOINT2: 424, PAPER: 425,
 };
+// Effets passagers des substances : nom affiché et ce qu'ils font.
+export const FX = {
+  regen: { name: 'Apaisé', tip: 'la vie remonte vite, même le ventre vide' },
+  light: { name: 'Léger', tip: 'pesanteur réduite, plus de dégâts de chute' },
+  vision: { name: 'Vision claire', tip: 'on y voit dans le noir' },
+  euphoria: { name: 'Euphorie', tip: 'plus rapide, saute plus haut, la faim ne baisse plus' },
+  rush: { name: 'Surexcité', tip: 'mine et frappe bien plus fort, court plus vite' },
+};
+// Herbes cultivées : un seul couple de blocs (pousse, plant mûr), la variété est portée par l'état du bloc (0 à 3).
+export const HERBS = [
+  { name: 'Verte des prairies', seed: 401, fresh: 405, dry: 409, joint: 422, fx: 'regen', color: 0x6fd16a },
+  { name: "Brume d'altitude", seed: 402, fresh: 406, dry: 410, joint: 423, fx: 'light', color: 0xb48cff },
+  { name: 'Lueur mycélienne', seed: 403, fresh: 407, dry: 411, joint: 424, fx: 'vision', color: 0x2fd4b0 },
+  { name: 'Coca', seed: 404, fresh: 408, dry: 412, color: 0x3f8f4b },
+];
 // Carburant : un liquide qui n'existe que dans les réservoirs et les tuyaux (ce n'est pas un bloc).
 export const F_FUEL = 300;
 
@@ -131,6 +153,12 @@ BLOCKS[B.MOONDUST] = all("Poussière d'éther", T.MOONDUST, 0.5, 'shovel');
 BLOCKS[B.MOONROCK] = all("Roche d'éther", T.MOONROCK, 3, 'pick', 2);
 BLOCKS[B.TITAN_ORE] = all('Minerai de titane', T.TITAN_ORE, 4.2, 'pick', 4);
 BLOCKS[B.COMPRESSOR] = blk('Compresseur', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
+BLOCKS[B.HERB1] = all("Pousse d'herbe", T.CROP, 0.1, null, 0, { herb: 1, pass: true, crop: true, hidden: true });
+BLOCKS[B.HERB2] = all('Herbe mûre', T.CROP, 0.1, null, 0, { herb: 2, pass: true, crop: true, hidden: true });
+BLOCKS[B.DRYER] = blk('Séchoir', T.PLANKS, T.PLANKS, T.PLANKS, 1.4, 'axe');
+BLOCKS[B.DECOMP] = blk('Décomposeur', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
+BLOCKS[B.EXTRACTOR] = blk('Extracteur', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
+BLOCKS[B.SYNTH] = blk('Synthétiseur', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
 BLOCKS[B.HARVESTER] = blk('Récolteuse', T.MACHINE, T.MACHINE, T.MACHINE, 1.8, 'pick');
 BLOCKS[B.SPRINKLER] = blk('Arroseur', T.MACHINE, T.MACHINE, T.MACHINE, 1.4, 'pick');
 BLOCKS[B.TELEPAD] = all('Téléporteur', T.M_DARK, 2, 'pick', 0, { onTile: T.M_CYAN });
@@ -161,12 +189,13 @@ ORE_CROPS.forEach(([seed, name, tile, out], k) => {
 export const GROW = { [B.CROP1]: [B.CROP2, 40], [B.CROP2]: [B.CROP3, 40] };
 ORE_CROPS.forEach((c, k) => { GROW[B.ORE_CROP + k * 2] = [B.ORE_CROP + k * 2 + 1, c[4]]; });
 // Plant mûr -> stade auquel la récolteuse le remet après l'avoir cueilli.
-export const REPLANT = { [B.CROP3]: B.CROP1 };
+GROW[B.HERB1] = [B.HERB2, 110];
+export const REPLANT = { [B.CROP3]: B.CROP1, [B.HERB2]: B.HERB1 };
 ORE_CROPS.forEach((c, k) => { REPLANT[B.ORE_CROP + k * 2 + 1] = B.ORE_CROP + k * 2; });
 
 export const ELECTRIC = new Set([B.CABLE, B.TURBINE, B.LAMP, B.FAN, B.TURRET, B.TNT,
   B.E_FURNACE, B.GENERATOR, B.SOLAR, B.BATTERY, B.CNC, B.PRINTER, B.CHARGER, B.CORE, B.CASING,
-  B.PUMP, B.STONER, B.GROWER, B.WASHER, B.LAVA_GEN, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER, B.HARVESTER, B.SPRINKLER, B.TELEPAD]);
+  B.PUMP, B.STONER, B.GROWER, B.WASHER, B.LAVA_GEN, B.FORGE, B.CONDENSER, B.LIGHTHOUSE, B.COMPRESSOR, B.REFINERY, B.ELECTRO, B.ALLOY, B.CANNER, B.HARVESTER, B.SPRINKLER, B.TELEPAD, B.DRYER, B.DECOMP, B.EXTRACTOR, B.SYNTH]);
 // Blocs qu'on traverse en marchant (cultures, torches).
 export const PASS = new Set();
 BLOCKS.forEach((def, id) => { if (def?.pass) PASS.add(id); });
@@ -273,6 +302,19 @@ Object.assign(ITEMS, {
   [I.STEEL]: { name: "Lingot d'acier", shape: 'ingot', color: 0x7c8496, stack: 99 },
   [I.ELECTRUM]: { name: "Lingot d'électrum", shape: 'ingot', color: 0xb8f0c8, stack: 99 },
   [I.SHEARS]: { name: 'Cisailles', shape: 'wire', color: 0xdfe3ea, stack: 1 },
+  [I.E_C]: { name: 'Fiole de carbone', shape: 'cell', color: 0x4a4f63, stack: 99 },
+  [I.E_H]: { name: "Fiole d'hydrogène", shape: 'cell', color: 0xbfe9fa, stack: 99 },
+  [I.E_O]: { name: "Fiole d'oxygène", shape: 'cell', color: 0xff8b8b, stack: 99 },
+  [I.E_N]: { name: "Fiole d'azote", shape: 'cell', color: 0x9dff5a, stack: 99 },
+  [I.BASE]: { name: 'Base cristalline', shape: 'dustp', color: 0xf2d9ff, stack: 99 },
+  [I.PASTE]: { name: 'Pâte de coca', shape: 'lump', color: 0xd9d2a8, stack: 99 },
+  [I.COCA_LEAF]: { name: 'Feuilles de coca', shape: 'feather', color: 0x3f8f4b, stack: 99 },
+  [I.DRY_COCA]: { name: 'Coca séchée', shape: 'feather', color: 0x8a7a4a, stack: 99 },
+  [I.RESIN]: { name: 'Résine', shape: 'lump', color: 0x6b4a2a, stack: 99, fx: ['regen', 240] },
+  [I.ECSTASY]: { name: 'Ecstasy', shape: 'ammo', color: 0xff8ad1, stack: 99, fx: ['euphoria', 120] },
+  [I.COCAINE]: { name: 'Cocaïne', shape: 'dustp', color: 0xffffff, stack: 99, fx: ['rush', 90] },
+  [I.PAPER]: { name: 'Papier', shape: 'plate', color: 0xf7f2e4, stack: 99 },
+  [I.FILTER]: { name: 'Filtre', shape: 'circuit', color: 0xf4c95d, stack: 16 },
   [I.CAN]: { name: 'Bidon vide', shape: 'cell', color: 0xc7ccd9, stack: 16 },
   [I.FUEL]: { name: 'Bidon de carburant', shape: 'cell', color: 0xff8a3d, stack: 16 },
   [I.OXY]: { name: "Cartouche d'oxygène", shape: 'cell', color: 0x7ef0ff, stack: 16 },
@@ -295,6 +337,14 @@ Object.assign(ITEMS, {
   [I.JETPACK]: { name: 'Réacteur dorsal', shape: 'pack', color: 0x8d94a8, stack: 1, charge: { max: 600, use: 20 }, armor: { slot: 1, points: 2 } },
 });
 
+HERBS.forEach((h, v) => {
+  const coca = !h.joint;
+  ITEMS[h.seed] = { name: coca ? 'Graines de coca' : `Graines de cannabis « ${h.name} »`, shape: 'seed', color: h.color, stack: 99, plant: B.HERB1, variant: v };
+  if (coca) return;
+  ITEMS[h.fresh] = { name: `Tête fraîche « ${h.name} »`, shape: 'berries', color: h.color, stack: 99 };
+  ITEMS[h.dry] = { name: `Tête séchée « ${h.name} »`, shape: 'berries', color: (h.color & 0xfefefe) >> 1 | 0x302010, stack: 99 };
+  ITEMS[h.joint] = { name: `Joint « ${h.name} »`, shape: 'stick', color: 0xf7f2e4, stack: 16, fx: [h.fx, 90] };
+});
 ITEMS[B.TANK].stack = 1; // un réservoir garde son contenu : il ne s'empile pas
 
 // ---------- Enchantements ----------
@@ -335,7 +385,7 @@ export const levelOf = (xp) => Math.floor(Math.sqrt(xp / 10));
 // ---------- Recettes ----------
 export const STATIONS = { bench: 'Établi' };
 // Ordre d'affichage des catégories dans l'écran de fabrication.
-export const CATS = ['Bases', 'Outils', 'Armures', 'Construction', 'Rangement', 'Logistique', 'Machines', 'Énergie', 'Combat', 'Exploration'];
+export const CATS = ['Bases', 'Outils', 'Armures', 'Construction', 'Rangement', 'Logistique', 'Machines', 'Énergie', 'Combat', 'Exploration', 'Chimie'];
 export const RECIPES = [];
 const R = (cat, out, n, ins, station = null) => RECIPES.push({ cat, out, n, ins, station });
 
@@ -353,6 +403,13 @@ R('Machines', B.ELECTRO, 1, [[I.PLATE, 4], [I.CIRCUIT, 3], [I.CELL, 1], [B.GLASS
 R('Machines', B.MODBENCH, 1, [[I.TITAN, 4], [I.STEEL, 4], [I.ELECTRUM, 4]], 'bench');
 R('Machines', B.ALLOY, 1, [[B.FURNACE, 1], [I.PLATE, 6], [I.CIRCUIT, 2]], 'bench');
 R('Machines', B.CANNER, 1, [[I.PLATE, 4], [I.CIRCUIT, 2], [B.FLUID_PIPE, 2]], 'bench');
+R('Chimie', B.DRYER, 1, [[B.PLANKS, 4], [I.WIRE, 4], [I.PLATE, 2]], 'bench');
+R('Chimie', B.DECOMP, 1, [[I.STEEL, 4], [I.CIRCUIT, 4], [B.GLASS, 4]], 'bench');
+R('Chimie', B.EXTRACTOR, 1, [[I.PLATE, 4], [I.CIRCUIT, 2], [I.BUCKET, 1], [B.GLASS, 2]], 'bench');
+R('Chimie', B.SYNTH, 1, [[I.STEEL, 4], [I.ELECTRUM, 4], [B.GLASS, 4], [I.CIRCUIT, 4]], 'bench');
+R('Chimie', I.PAPER, 4, [[I.WHEAT, 1]]);
+HERBS.forEach((h) => { if (h.joint) R('Chimie', h.joint, 1, [[h.dry, 1], [I.PAPER, 1]]); });
+R('Logistique', I.FILTER, 2, [[I.PLATE, 1], [I.WIRE, 2], [B.GLASS, 1]], 'bench');
 R('Logistique', I.CAN, 2, [[I.PLATE, 1]], 'bench');
 R('Exploration', B.ROCKET, 1, [[I.COMPOSITE, 8], [I.STEEL, 8], [I.ENGINE, 1], [I.CIRCUIT, 8]], 'bench');
 R('Armures', I.BIO_HELM, 1, [[I.TITAN, 5], [I.COMPOSITE, 2], [I.ELECTRUM, 2]], 'bench');

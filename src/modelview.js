@@ -224,6 +224,24 @@ const BUILD = {
       beam.visible = sky.visible = lit; beam.rotation.y = s.t * 0.8;
     } };
   },
+  [B.DRYER]: (k) => {
+    const heat = k.glow(11, 0.4, 11, T.M_HOT, 8, 1.4, 8);
+    return { update: (s) => { heat.visible = s.lv > 0.04; heat.scale.x = heat.scale.z = 0.8 + 0.2 * Math.sin(s.t * 4); } };
+  },
+  [B.DECOMP]: (k) => {
+    const spin = k.pivot(8, 16, 8);
+    k.lit(10, 1, 2, T.M_STEEL, 0, 0, 0, spin); k.lit(2, 1, 10, T.M_STEEL, 0, 0, 0, spin);
+    const core = k.glow(4, 6, 4, T.M_VIOLET, 8, 8.5, 8);
+    return { sound: 'hum', update: (s) => { spin.rotation.y = s.ph * 14; core.visible = s.lv > 0.04; core.scale.setScalar(0.8 + 0.2 * Math.sin(s.t * 12)); } };
+  },
+  [B.EXTRACTOR]: (k) => {
+    const liq = k.glow(7, 8, 7, T.M_GREEN, 6, 7.5, 6);
+    return { sound: 'hum', update: (s) => { liq.visible = s.lv > 0.04; liq.scale.y = 0.4 + 0.6 * frac(s.ph / 8); liq.position.y = (3.6 + 4 * liq.scale.y) * U; } };
+  },
+  [B.SYNTH]: (k) => {
+    const tubes = [k.glow(3, 5, 3, T.M_CYAN, 4, 11.5, 4), k.glow(3, 5, 3, T.M_VIOLET, 12, 11.5, 4), k.glow(3, 6, 3, T.M_HOT, 8, 12, 12)];
+    return { sound: 'hum', update: (s) => { tubes.forEach((m, i) => { m.visible = s.lv > 0.04; m.scale.y = 0.5 + 0.5 * Math.abs(Math.sin(s.ph * 1.5 + i * 2)); }); } };
+  },
   [B.HARVESTER]: (k) => {
     const arm = k.pivot(8, 15, 8);
     k.lit(14, 0.8, 1.2, T.M_STEEL, 0, 0, 0, arm); k.lit(1.2, 3, 1.2, T.M_RED, 6.4, -1.4, 0, arm); k.lit(1.2, 3, 1.2, T.M_RED, -6.4, -1.4, 0, arm);

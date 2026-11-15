@@ -49,7 +49,7 @@ function turned(quads) {
 
 // MODEL[id] = { rq: faces pour chacune des 4 orientations } ou { dyn(masque des 6 voisins reliés, décor), connects(idVoisin) }
 // anim : a des pièces mobiles. L'avant d'un modèle est du côté z = 0.
-export const MODEL = new Array(256).fill(null);
+export const MODEL = new Array(512).fill(null);
 const def = (id, boxes, extra = {}) => {
   const rq = [quadsOf(boxes)];
   for (let r = 1; r < 4; r++) rq.push(turned(rq[r - 1]));
@@ -267,6 +267,45 @@ def(B.MODBENCH, [
   [2, 12, 2, 8, 12.5, 8, T.M_CYAN, 1],
   [12, 12, 11, 14, 19, 13, S], [6, 18, 11, 14, 19.5, 13, S], [6, 15, 11.5, 7, 18, 12.5, D],
 ]);
+// Herbes : quatre variantes du même bloc, choisies par l'état du bloc (à la place de l'orientation).
+const herbLook = [[T.CROP, T.M_GREEN], [T.MOSS_TOP, T.M_VIOLET], [T.CAP, T.M_CYAN], [T.LEAVES, T.M_RED]];
+MODEL[B.HERB1] = { rq: herbLook.map(([leaf]) => quadsOf([[7, -1, 7, 9, 6, 9, T.CROP], [4, 3, 7.5, 12, 4, 8.5, leaf], [7.5, 5, 4, 8.5, 6, 12, leaf]])) };
+MODEL[B.HERB2] = { rq: herbLook.map(([leaf, bud], v) => quadsOf(v === 3 ? [
+  // Coca : un buisson bas piqué de baies rouges.
+  [7, -1, 7, 9, 5, 9, T.LOG_SIDE], [3, 4, 3, 13, 11, 13, leaf], [5, 11, 5, 11, 13, 11, leaf],
+  [2.5, 6, 6, 3.5, 7.5, 7.5, bud], [12.5, 8, 9, 13.5, 9.5, 10.5, bud], [7, 9, 2.5, 8.5, 10.5, 3.5, bud], [9, 5, 12.5, 10.5, 6.5, 13.5, bud],
+] : [
+  // Cannabis : une tige, des étages de feuilles en croix, des têtes de la couleur de la variété.
+  [7.5, -1, 7.5, 8.5, 14, 8.5, T.CROP],
+  [2, 3, 7.5, 14, 4, 8.5, leaf], [7.5, 3, 2, 8.5, 4, 14, leaf],
+  [3.5, 7, 7.5, 12.5, 8, 8.5, leaf], [7.5, 7, 3.5, 8.5, 8, 12.5, leaf],
+  [5, 10.5, 7.5, 11, 11.5, 8.5, leaf], [7.5, 10.5, 5, 8.5, 11.5, 11, leaf],
+  [6.5, 13, 6.5, 9.5, 16, 9.5, bud], [2, 4, 7, 4, 6, 9, bud], [12, 4, 7, 14, 6, 9, bud], [7, 8, 2.5, 9, 10, 4.5, bud], [7, 8, 11.5, 9, 10, 13.5, bud],
+])) };
+for (const id of [B.HERB1, B.HERB2]) MODEL[id].quads = MODEL[id].rq[0];
+def(B.DRYER, [
+  ...corners(0, 0, 2, 16, T.LOG_SIDE),
+  ...ring(14, 16, 2, T.PLANKS), ...ring(0, 1, 2, T.PLANKS),
+  [2, 10, 2, 14, 10.5, 14, T.M_GRILL], [2, 5, 2, 14, 5.5, 14, T.M_GRILL],
+  [4, 10.5, 4, 7, 12, 7, T.CROP], [9, 10.5, 8, 12, 12, 11, T.MOSS_TOP], [5, 5.5, 8, 8, 7, 11, T.CAP],
+], { anim: true });
+def(B.DECOMP, [
+  [0, 0, 0, 16, 4, 16, D],
+  [5, 4, 5, 11, 13, 11, S], [4, 13, 4, 12, 15, 12, D],
+  ...[[1, 1, T.M_BLACK], [12, 1, T.M_CYAN], [1, 12, T.M_RED], [12, 12, T.M_GREEN]].map(([x, z, t]) => [x, 4, z, x + 3, 10, z + 3, t]),
+  ...[[1, 1], [12, 1], [1, 12], [12, 12]].map(([x, z]) => [x + 0.5, 10, z + 0.5, x + 2.5, 11, z + 2.5, S]),
+], { anim: true });
+def(B.EXTRACTOR, [
+  [0, 0, 0, 16, 3, 16, D],
+  [2, 3, 2, 10, 13, 10, T.M_GLASS], [1.5, 13, 1.5, 10.5, 14, 10.5, S],
+  [11, 3, 9, 15, 8, 15, C], [10, 9, 5, 11, 10, 12, C], [11.5, 8, 11, 12.5, 10, 12, C],
+  [5, 14, 5, 7, 16, 7, D],
+], { anim: true });
+def(B.SYNTH, [
+  [0, 0, 0, 16, 3, 16, D], [1, 3, 1, 15, 8, 15, { t: K, s: M }],
+  [2, 8, 2, 6, 15, 6, T.M_GLASS], [10, 8, 2, 14, 15, 6, T.M_GLASS], [6, 8, 10, 10, 16, 14, T.M_GLASS],
+  [6, 12, 3.5, 10, 13, 4.5, C], [3.5, 12, 6, 4.5, 13, 11, C], [11.5, 12, 6, 12.5, 13, 11, C],
+], { anim: true });
 def(B.HARVESTER, [
   [1, 0, 1, 15, 5, 15, { t: D, s: M }],
   [6.5, 5, 6.5, 9.5, 14, 9.5, S], [5.5, 14, 5.5, 10.5, 16, 10.5, D],
@@ -325,8 +364,8 @@ function linked(id, tile, onTile, core, arm) {
   const cache = new Map();
   MODEL[id] = {
     connects: (nb) => connects(id, nb),
-    dyn: (mask, deco = 0) => {
-      const key = mask | (deco << 6);
+    dyn: (mask, deco = 0, filt = 0) => {
+      const key = mask + deco * 64 + filt * 262144;
       let q = cache.get(key);
       if (q) return q;
       const boxes = [[a, a, a, b, b, b, tile, 0, onTile], ...arms.filter((_, i) => mask & (1 << i)).map((x) => [...x, tile, 0, onTile])];
@@ -340,6 +379,8 @@ function linked(id, tile, onTile, core, arm) {
           sizes.forEach((g, n) => boxes.push(along(i, 0.2 + n * 1.3, 1.5 + n * 1.3, arm + g, m === 1 ? T.M_ORANGE : T.M_BLUE)));
         }
       }
+      // Filtre : un manchon doré sur le bras.
+      for (let i = 0; i < 6; i++) if ((filt >> i) & 1 && mask & (1 << i)) boxes.push(along(i, 3.2, 4.6, arm + 1.3, T.M_GOLD));
       cache.set(key, (q = quadsOf(boxes)));
       return q;
     },
