@@ -314,7 +314,7 @@ Object.assign(ITEMS, {
   [I.ECSTASY]: { name: 'Ecstasy', shape: 'ammo', color: 0xff8ad1, stack: 99, fx: ['euphoria', 120] },
   [I.COCAINE]: { name: 'Cocaïne', shape: 'dustp', color: 0xffffff, stack: 99, fx: ['rush', 90] },
   [I.PAPER]: { name: 'Papier', shape: 'plate', color: 0xf7f2e4, stack: 99 },
-  [I.GEM]: { name: 'Cristal taillé', shape: 'lump', color: 0x5fdcf5, stack: 99 },
+  [I.GEM]: { name: 'Cristal trempé', shape: 'lump', color: 0x5fdcf5, stack: 99 },
   [I.FILTER]: { name: 'Filtre', shape: 'circuit', color: 0xf4c95d, stack: 16 },
   [I.CAN]: { name: 'Bidon vide', shape: 'cell', color: 0xc7ccd9, stack: 16 },
   [I.FUEL]: { name: 'Bidon de carburant', shape: 'cell', color: 0xff8a3d, stack: 16 },

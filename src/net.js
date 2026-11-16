@@ -40,7 +40,7 @@ export class Net {
   close() { this.closed = true; this.ws?.close(); }
 }
 
-function nameSprite(name) {
+export function nameSprite(name) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -51,7 +51,9 @@ function nameSprite(name) {
   g.fillStyle = '#fff6e9';
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(name, 128, 33, 230);
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, fog: false }));
+  // Visible à travers le décor et le brouillard : c'est ce qui permet de se retrouver.
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, depthTest: false, fog: false }));
+  s.renderOrder = 10;
   s.scale.set(1.6, 0.4, 1);
   s.position.y = 2.25;
   return s;
@@ -78,14 +80,15 @@ export class RemotePlayers {
     const wing = part(g, 3, 0.05, 1.2, 0xe8795a, 0, 2.05, 0.1);
     const meshes = [];
     g.traverse((o) => { if (o.isMesh) meshes.push(o); });
-    g.add(nameSprite(name));
+    const tag = nameSprite(name);
+    g.add(tag);
     g.visible = false;
     this.scene.add(g);
     // La main droite porte l'objet tenu ; l'armure est faite de coques posées sur le corps.
     const hand = new THREE.Group();
     hand.position.set(0, -0.6, -0.16);
     limbs[3].add(hand);
-    this.map.set(id, { g, limbs, head, wing, meshes, name, target: null, phase: 0, hand, held: 0, heldMesh: null, armor: [0, 0, 0, 0], shells: [[], [], [], []], crouch: 0 });
+    this.map.set(id, { g, limbs, head, wing, meshes, name, tag, target: null, phase: 0, hand, held: 0, heldMesh: null, armor: [0, 0, 0, 0], shells: [[], [], [], []], crouch: 0 });
   }
 
   remove(id) {
@@ -138,7 +141,7 @@ export class RemotePlayers {
     }
   }
 
-  update(dt, dim, light) {
+  update(dt, dim, light, eye) {
     for (const p of this.map.values()) {
       const t = p.target;
       p.g.visible = !!t && t.d === dim;
@@ -157,6 +160,10 @@ export class RemotePlayers {
       p.phase += dt * 9;
       const swing = Math.sin(p.phase) * Math.min(0.8, moved * 6);
       p.limbs.forEach((l, i) => { l.rotation.x = i % 2 ? -swing : swing; });
+      // De loin, l'étiquette grossit pour garder une taille lisible à l'écran.
+      const far = eye ? Math.max(1, Math.hypot(pos.x - eye.x, pos.y - eye.y, pos.z - eye.z) / 14) : 1;
+      p.tag.scale.set(1.6 * far, 0.4 * far, 1);
+      p.tag.position.y = 2.25 + (far - 1) * 0.3;
       const tint = light(pos.x, pos.y + 1, pos.z);
       for (const o of p.meshes) o.material.color.copy(o.userData.base).multiply(tint);
     }

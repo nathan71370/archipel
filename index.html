@@ -183,6 +183,8 @@
   .palette .slot { width:40px; height:40px; border-radius:7px; cursor:pointer; } .palette .slot:hover { border-color:rgba(255,246,233,.5); }
   .palette .slot img { width:28px; height:28px; }
   body.sso .lan { display:none; }
+  .wprow { display:flex; gap:8px; align-items:center; } .wprow input { flex:1; } .recipe.wp { cursor:default; opacity:1; } .recipe.wp.off .rname { opacity:.5; }
+  #clickhint { position:absolute; left:50%; top:58%; transform:translateX(-50%); padding:8px 18px; border-radius:999px; background:rgba(27,22,48,.8); font-size:14px; font-weight:800; }
   #padname { width:100%; box-sizing:border-box; flex:none; }
   #chat { position:absolute; left:16px; bottom:120px; width:min(420px, 46vw); font-size:13px; font-weight:600; }
   #chatlog { display:flex; flex-direction:column; gap:2px; max-height:190px; overflow:hidden; }
@@ -202,6 +204,7 @@
   <div id="goal"></div>
   <div id="boss" class="hidden"><span></span><div class="track hot"><i></i></div></div>
   <div id="crosshair"></div>
+  <div id="clickhint" class="hidden">Clique pour reprendre</div>
   <div id="toasts"></div>
   <div id="chat"><div id="chatlog"></div><input id="chatin" type="text" maxlength="160" placeholder="Message, ou /aide pour les commandes" autocomplete="off" spellcheck="false"></div>
   <div id="bottom">
@@ -224,7 +227,7 @@
       <div id="armor"></div>
       <h2>Sac</h2>
       <div class="bag" id="bag"></div>
-      <div class="tip">Clic : prendre / poser · Clic droit : moitié / un seul · Clic hors du panneau : jeter · E : fermer</div>
+      <div class="tip">Clic : prendre / poser · Clic droit : moitié / un seul · Maj + clic : déplacer ou équiper · Clic hors du panneau : jeter · E ou Échap : fermer</div>
     </div>
     <div class="craft">
       <h2 id="crafttitle">Fabrication</h2>
@@ -261,6 +264,7 @@
       <kbd>E</kbd><span>Sac et fabrication</span>
       <kbd>Échap</kbd><span>Pause, et retour au jeu</span>
       <kbd>J</kbd><span>Journal des objectifs</span>
+      <kbd>B</kbd><span>Repères (points à retrouver)</span>
       <kbd>T</kbd><span>Chat et commandes (/aide, /gamemode creative…)</span>
       <kbd>A</kbd><span>Jeter l'objet tenu (Ctrl + A : toute la pile)</span>
       <kbd>1 – 9 / molette</kbd><span>Choisir un objet</span>

@@ -30,7 +30,7 @@ for (const id of [B.FURNACE, B.E_FURNACE, B.GENERATOR, B.LAVA_GEN, B.ALLOY, B.FO
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 export const CS = 16, WY = 160;
-const CELL = 112, CPC = CELL / CS; // une île au plus par cellule de 7x7 tronçons
+// Une île au plus par cellule. La taille dépend de la génération du monde (voir le constructeur).
 export const VIEW = 11; // rayon de vue en tronçons
 
 export const BIOMES = ['Prairie', 'Forêt', 'Pics rocheux', 'Cristaux', 'Terres de braise', 'Champignonnière', 'Dunes', 'Glacier', 'Astéroïde'];
@@ -114,7 +114,11 @@ for (let dz = -VIEW - 2; dz <= VIEW + 2; dz++) for (let dx = -VIEW - 2; dx <= VI
 OFFSETS.sort((a, b) => a.d - b.d);
 
 export class World {
-  constructor(seed, dim, edits, scene, mats) {
+  // gen : génération du terrain. 1 = premiers mondes (petites îles), 2 = grandes îles. Un monde garde la sienne à vie.
+  constructor(seed, dim, edits, scene, mats, gen = 1) {
+    this.gen = gen;
+    this.cell = gen >= 2 ? 224 : 112;
+    this.cpc = this.cell / CS;
     this.seed = (seed + dim * 7919) | 0;
     this.dim = dim;
     this.edits = edits; // Map clé de tronçon -> Map(index local -> id)
@@ -385,12 +389,12 @@ export class World {
     const s = this.seed, home = this.dim === 0 && i === 0 && j === 0;
     let isl = null;
     if (home || hash(i, j, 1, s) < 0.84) {
-      const r = home ? 42 : 22 + Math.floor(hash(i, j, 2, s) * 27);
-      const room = CELL - 2 * r - 8;
+      const r = this.gen >= 2 ? (home ? 84 : 52 + Math.floor(hash(i, j, 2, s) * 52)) : home ? 42 : 22 + Math.floor(hash(i, j, 2, s) * 27);
+      const room = this.cell - 2 * r - 8;
       isl = {
         r,
-        x: i * CELL + r + 4 + Math.floor(hash(i, j, 3, s) * room),
-        z: j * CELL + r + 4 + Math.floor(hash(i, j, 4, s) * room),
+        x: i * this.cell + r + 4 + Math.floor(hash(i, j, 3, s) * room),
+        z: j * this.cell + r + 4 + Math.floor(hash(i, j, 4, s) * room),
         y: home ? 72 : 60 + Math.floor(hash(i, j, 5, s) * 36),
         biome: this.dim === 2 ? 8 : this.dim === 1 ? 4 : home ? 0 : SKY_BIOMES[Math.floor(hash(i, j, 6, s) * SKY_BIOMES.length)],
         wind: hash(i, j, 7, s) * Math.PI * 2,
@@ -411,7 +415,7 @@ export class World {
   }
 
   nearestIsland(x, z) {
-    const ci = Math.floor(x / CELL), cj = Math.floor(z / CELL);
+    const ci = Math.floor(x / this.cell), cj = Math.floor(z / this.cell);
     for (let ring = 1; ring < 6; ring++) {
       let best = null, bd = Infinity;
       for (let i = ci - ring; i <= ci + ring; i++) for (let j = cj - ring; j <= cj + ring; j++) {
@@ -426,18 +430,18 @@ export class World {
   }
 
   villageNear(x, z, radius = 26) {
-    const v = this.island(Math.floor(x / CELL), Math.floor(z / CELL))?.village;
+    const v = this.island(Math.floor(x / this.cell), Math.floor(z / this.cell))?.village;
     return v && Math.hypot(v.x - x, v.z - z) < radius ? v : null;
   }
 
   biomeAt(x, z) {
-    const isl = this.island(Math.floor(x / CELL), Math.floor(z / CELL));
+    const isl = this.island(Math.floor(x / this.cell), Math.floor(z / this.cell));
     return isl && Math.hypot(isl.x - x, isl.z - z) < isl.r + 4 ? BIOMES[isl.biome] : null;
   }
 
   // Courants ascendants naturels autour d'une position.
   updraftsNear(x, z) {
-    const out = [], ci = Math.floor(x / CELL), cj = Math.floor(z / CELL);
+    const out = [], ci = Math.floor(x / this.cell), cj = Math.floor(z / this.cell);
     if (this.dim === 2) return out; // pas d'air dans l'Éther
     for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) {
       const isl = this.island(i, j);
@@ -460,6 +464,7 @@ export class World {
     else if (isl.biome === 4 || isl.biome === 8) top = isl.y + Math.floor(rise * (2 + 13 * Math.abs(h)));
     else top = isl.y + Math.floor(rise * (3 + 6 * h));
     let depth = 2 + isl.r * 0.8 * Math.pow(edge, 0.62) * (0.75 + 0.45 * Math.abs(n.noise(x * 0.07, z * 0.07 + 50)));
+    if (this.gen >= 2) depth = Math.min(depth, 44); // une grande île reste une dalle épaisse, pas un cône jusqu'au fond du monde
     depth += Math.max(0, n.noise(x * 0.33 + 9, z * 0.33)) * 5 * edge;
     o.top = Math.min(WY - 14, top);
     o.bottom = Math.max(2, Math.floor(isl.y - depth));
@@ -508,7 +513,7 @@ export class World {
   generate(cx, cz) {
     const c = new Chunk(cx, cz);
     const x0 = cx * CS, z0 = cz * CS;
-    const isl = this.island(Math.floor(cx / CPC), Math.floor(cz / CPC));
+    const isl = this.island(Math.floor(cx / this.cpc), Math.floor(cz / this.cpc));
     if (isl) {
       const R = isl.r * 1.1 + 5;
       const nx = Math.max(x0, Math.min(isl.x, x0 + 15)), nz = Math.max(z0, Math.min(isl.z, z0 + 15));

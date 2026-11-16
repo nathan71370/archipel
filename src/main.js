@@ -12,7 +12,7 @@ import { MobSim } from './mobsim.js';
 import { Fluids } from './fluids.js';
 import { Sky } from './sky.js';
 import { UI } from './ui.js';
-import { Net, RemotePlayers, wsUrl, localWsUrl } from './net.js';
+import { Net, RemotePlayers, nameSprite, wsUrl, localWsUrl } from './net.js';
 import { Sim, MACHINES, PIPE_MODES, N6, isPipe, connects } from './sim.js';
 import { MODEL, armBox } from './models.js';
 import { Drops } from './drops.js';
@@ -149,6 +149,8 @@ function startGame({ net = null, welcome = null }) {
   // En ligne, le personnage (sac, position, journal) est gardé par le serveur ; l'ancienne copie locale sert de secours.
   const save = multi ? welcome.me ?? readSave(SAVE_KEY) : readSave(SAVE_KEY);
   const seed = multi ? welcome.seed : save?.seed ?? (Math.random() * 2 ** 31) | 0;
+  // Génération du terrain : un monde existant garde la sienne (petites îles), un nouveau prend les grandes.
+  const gen = multi ? welcome.gen ?? 1 : save ? save.gen ?? 1 : 2;
   const editsByDim = editsToMaps(multi ? welcome.edits : save?.edits);
 
   // ---------- Rendu ----------
@@ -257,7 +259,7 @@ function startGame({ net = null, welcome = null }) {
     if (id !== B.TANK && id !== B.CHEST) world.redraw(x, y, z);
   }
   function makeWorld(d) {
-    const w = new World(seed, d, editsByDim[d], scene, mats);
+    const w = new World(seed, d, editsByDim[d], scene, mats, gen);
     w.powered = poweredSet(d);
     w.vis = visOf(d);
     w.active = activeSet(d);
@@ -281,6 +283,15 @@ function startGame({ net = null, welcome = null }) {
   // Le planeur est devenu un objet : une partie commencée avant en reçoit un, une fois.
   if (save && !save.glider && !inv.glider()) inv.add(I.GLIDER1, 1);
   if (save?.owed) inv.add(B.ROCKET, 1); // partie quittée en plein vol : la fusée est rendue
+  // Repères : des points nommés à retrouver, par monde. { name, d, x, y, z, on }
+  const wps = Array.isArray(save?.wps) ? save.wps.slice(0, 16) : [];
+  const wpMarks = [];
+  let wpDirty = true;
+  function wpAdd(name, at = player.pos, d = dim) {
+    if (wps.length >= 16) { ui.toast('Seize repères au plus : supprimes-en un.'); return; }
+    wps.push({ name: (name.trim() || `Repère ${wps.length + 1}`).slice(0, 20), d, x: Math.round(at.x), y: Math.round(at.y), z: Math.round(at.z), on: true });
+    wpDirty = dirty = true;
+  }
   let air = save?.air ?? 100;
   // Effets passagers des substances : nom -> secondes restantes.
   const fx = { ...(save?.fx ?? {}) };
@@ -421,6 +432,9 @@ function startGame({ net = null, welcome = null }) {
   const ui = new UI(inv, icons, {
     drop: (st) => { if (!creative) dropStack(st, true); }, // en créatif, jeter hors du sac détruit l'objet
     creative: () => creative,
+    wpList: () => wps.map((w) => ({ ...w, where: w.d === dim ? toward(w.x, w.z) : DIMS[w.d] })),
+    wpAdd: (name) => wpAdd(name),
+    wpDo: (op, i) => { if (!wps[i]) return; if (op === 'del') wps.splice(i, 1); else wps[i].on = !wps[i].on; wpDirty = dirty = true; },
     note: (text) => ui.toast(text),
     filterRemoved: () => { give(I.FILTER, 1); closeInventory(); },
     installed: (mod) => { flags.add('mod'); ui.toast(`Module installé : ${mod.name}`); blip(1100, 0.25, 'sine', 0.06); dirty = true; },
@@ -552,11 +566,16 @@ function startGame({ net = null, welcome = null }) {
   }
 
   function die() {
+    // Un repère marque l'endroit, pour revenir chercher ce qu'on y a laissé.
+    const old = wps.findIndex((w) => w.name === 'Dernière mort');
+    if (old >= 0) wps.splice(old, 1);
+    wpAdd('Dernière mort', player.safe ?? player.pos);
     player.hp = 0;
     player.pull = null;
     mode = 'dead';
     deathScreen.classList.remove('hidden');
     if (ui.open) ui.hide();
+    wasLocked = false;
     document.exitPointerLock?.();
   }
 
@@ -633,6 +652,7 @@ function startGame({ net = null, welcome = null }) {
     modelView.clear();
     fuses.length = 0;
     dim = d;
+    wpDirty = true;
     world = makeWorld(d);
     world.setView(viewRadius);
     world.applyPower(poweredSet(d));
@@ -842,34 +862,35 @@ function startGame({ net = null, welcome = null }) {
   let pausedAt = 0;
   function pause() {
     mode = 'menu';
+    clickHint.classList.add('hidden');
     pausedAt = performance.now();
     overlay.classList.remove('hidden');
     for (const k in input) input[k] = false;
     persist();
   }
-  // Le navigateur refuse de reprendre la souris dans la seconde qui suit un Échap : on réessaie un court moment.
-  let resumedAt = -1e9;
-  function resume() {
-    mode = 'play';
-    resumedAt = performance.now();
-    overlay.classList.add('hidden');
+  // Reprendre la souris. Le navigateur peut refuser (pas de geste reconnu, ou Échap pressé à l'instant) :
+  // on réessaie un court moment, puis on reste en jeu avec une invite « clique pour reprendre » plutôt que d'ouvrir la pause.
+  let wasLocked = false;
+  const clickHint = $('clickhint');
+  function grab() {
     let tries = 0;
     const attempt = () => {
-      if (mode !== 'play' || document.pointerLockElement === canvas) return;
+      if (mode !== 'play' || debugLock || document.pointerLockElement === canvas) return;
       const p = canvas.requestPointerLock();
-      if (p?.catch) p.catch(() => { if (++tries < 10 && mode === 'play') setTimeout(attempt, 200); else if (!debugLock && mode === 'play') pause(); });
+      if (p?.catch) p.catch(() => { if (++tries < 6 && mode === 'play') setTimeout(attempt, 250); else if (mode === 'play') clickHint.classList.remove('hidden'); });
     };
     attempt();
   }
+  function resume() { lock(); }
   function lock() {
     mode = 'play';
     overlay.classList.add('hidden');
-    const p = canvas.requestPointerLock();
-    if (p?.catch) p.catch(() => { if (!debugLock && mode === 'play') pause(); });
+    grab();
   }
 
   function openInventory(opts) {
     if (mode !== 'play') return;
+    clickHint.classList.add('hidden');
     mode = 'inv';
     for (const k in input) input[k] = false;
     ui.show(opts);
@@ -1113,6 +1134,10 @@ function startGame({ net = null, welcome = null }) {
     // Pendant la saisie dans la recherche de recettes, seules Échap et Entrée comptent.
     if (e.target.tagName === 'INPUT') { if (e.code === 'Escape' && mode === 'inv') closeInventory(); else if (e.code === 'Enter') e.target.blur(); return; }
     if (mode === 'play' && !e.repeat && (e.code === 'KeyT' || e.code === 'Enter' || e.key === '/')) { openChat(e.key === '/' ? '/' : ''); e.preventDefault(); return; }
+    if (e.code === 'KeyB' && !e.repeat) {
+      if (mode === 'play') openInventory({ waypoints: true }); else if (mode === 'inv') closeInventory();
+      return;
+    }
     if (e.code === 'KeyJ' && !e.repeat) {
       if (mode === 'play') openInventory({ journal: journalView() }); else if (mode === 'inv') closeInventory();
       return;
@@ -1122,6 +1147,8 @@ function startGame({ net = null, welcome = null }) {
       return;
     }
     if (mode === 'inv' && e.code === 'Escape') { closeInventory(); return; }
+    // En jeu mais sans la souris (invite « clique pour reprendre ») : Échap ouvre quand même la pause.
+    if (mode === 'play' && e.code === 'Escape' && !debugLock && document.pointerLockElement !== canvas) { pause(); return; }
     // Échap ferme aussi la pause (pas dans la même pression que celle qui l'a ouverte).
     if (mode === 'menu' && e.code === 'Escape' && !e.repeat && performance.now() - pausedAt > 250) { resume(); return; }
     if (mode !== 'play') return;
@@ -1170,6 +1197,8 @@ function startGame({ net = null, welcome = null }) {
   addEventListener('mousemove', (e) => { if (mode === 'play' && document.pointerLockElement === canvas) player.look(e.movementX, e.movementY); });
   addEventListener('mousedown', (e) => {
     if (mode !== 'play') return;
+    // En jeu sans la souris (le navigateur l'a refusée) : ce clic sert à la reprendre, rien d'autre.
+    if (!debugLock && document.pointerLockElement !== canvas) { canvas.requestPointerLock()?.catch?.(() => {}); return; }
     if (e.button === 0) { input.mine = true; actionCd = 0; }
     if (e.button === 2) { input.use = true; useCd = 0; }
   });
@@ -1185,9 +1214,14 @@ function startGame({ net = null, welcome = null }) {
   }, { passive: true });
 
   document.addEventListener('pointerlockchange', () => {
-    if (document.pointerLockElement === canvas) { resumedAt = -1e9; return; } // souris reprise : fin du délai de grâce
-    if (document.pointerLockElement !== canvas && mode === 'chat' && !debugLock) { closeChat(); pause(); }
-    else if (document.pointerLockElement !== canvas && mode === 'play' && !debugLock && performance.now() - resumedAt > 2500) pause();
+    if (document.pointerLockElement === canvas) { wasLocked = true; clickHint.classList.add('hidden'); return; }
+    // La souris vient d'être rendue. Si c'est nous (sac, chat, pause), rien à faire ;
+    // si c'est Échap en plein jeu, c'est la pause — et seulement dans ce cas.
+    const had = wasLocked;
+    wasLocked = false;
+    if (debugLock || !had) return;
+    if (mode === 'chat') closeChat();
+    else if (mode === 'play') pause();
   });
   $('play').addEventListener('click', lock);
   $('respawn').addEventListener('click', respawn);
@@ -1200,10 +1234,10 @@ function startGame({ net = null, welcome = null }) {
       const data = {
         dim, selected, inv, respawn: respawnPoint,
         pos: player.onGround ? player.pos : player.safe, yaw: player.yaw, pitch: player.pitch,
-        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air, fx, owed: trip ? 1 : 0,
+        hp: Math.max(1, player.hp), hunger: player.hunger, xp: player.xp, journal: [...journal], made: [...made], gm: creative ? 'creative' : 'survival', glider: 1, air, fx, wps, owed: trip ? 1 : 0,
       };
       if (multi) net.send({ t: 'save', data });
-      if (!multi) Object.assign(data, { seed, time: sky.time, clock: sky.clock, sim, edits: editsByDim.map((m) => [...m].map(([key, mm]) => [key, [...mm].flat()])) });
+      if (!multi) Object.assign(data, { seed, gen, time: sky.time, clock: sky.clock, sim, edits: editsByDim.map((m) => [...m].map(([key, mm]) => [key, [...mm].flat()])) });
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
       dirty = false;
     } catch { /* stockage plein ou indisponible */ }
@@ -1265,7 +1299,7 @@ function startGame({ net = null, welcome = null }) {
     let out = '';
     const home = respawnPoint && respawnPoint.dim === dim ? respawnPoint : dim === 0 ? world.island(0, 0) : null;
     if (home) out += `<br>Maison ${toward(home.x, home.z)}`;
-    const ci = Math.floor(player.pos.x / 112), cj = Math.floor(player.pos.z / 112);
+    const ci = Math.floor(player.pos.x / world.cell), cj = Math.floor(player.pos.z / world.cell);
     let best = null, bd = Infinity;
     for (let i = ci - 3; i <= ci + 3; i++) for (let j = cj - 3; j <= cj + 3; j++) {
       const v = world.island(i, j)?.village;
@@ -1868,7 +1902,25 @@ function startGame({ net = null, welcome = null }) {
       sunTilt: dim === 0 && !sky.night ? Math.max(-0.75, Math.min(0.75, -Math.atan2(sky.sunDir.x, Math.max(0.2, sky.sunDir.y)))) : 0,
     });
     ambience(dt, running);
-    remotes.update(dt, dim, lightAt);
+    remotes.update(dt, dim, lightAt, camera.position);
+    // Repères suivis : une étiquette dans le monde, lisible de loin et à travers le décor.
+    if (wpDirty) {
+      wpDirty = false;
+      for (const m of wpMarks) { scene.remove(m); m.material.map.dispose(); m.material.dispose(); }
+      wpMarks.length = 0;
+      for (const w of wps) {
+        if (!w.on || w.d !== dim) continue;
+        const m = nameSprite('◆ ' + w.name);
+        m.userData.at = w;
+        scene.add(m);
+        wpMarks.push(m);
+      }
+    }
+    for (const m of wpMarks) {
+      const w = m.userData.at, far = Math.max(1, Math.hypot(w.x - camera.position.x, w.y - camera.position.y, w.z - camera.position.z) / 14);
+      m.position.set(w.x + 0.5, w.y + 2.2 + far * 0.3, w.z + 0.5);
+      m.scale.set(1.6 * far, 0.4 * far, 1);
+    }
     mobView.update(dt, lightAt, player.pos);
 
     if (net && (netTimer -= dt) <= 0) {
@@ -1886,12 +1938,14 @@ function startGame({ net = null, welcome = null }) {
       const h = Math.floor(sky.time * 24), m = Math.floor((sky.time * 24 % 1) * 6) * 10;
       const biome = world.biomeAt(player.pos.x, player.pos.z) ?? 'Plein ciel';
       const state = player.gliding ? (player.inUpdraft ? ' · courant ascendant' : ' · en vol plané') : '';
-      const here = world.island(Math.floor(player.pos.x / 112), Math.floor(player.pos.z / 112));
+      const here = world.island(Math.floor(player.pos.x / world.cell), Math.floor(player.pos.z / world.cell));
       sky.biome = here && Math.hypot(here.x - player.pos.x, here.z - player.pos.z) < here.r + 30 ? here.biome : 0;
       const boss = [...mobView.map.values()].find((q) => q.def.boss), bossEl = $('boss');
       bossEl.classList.toggle('hidden', !boss);
       if (boss) { bossEl.firstChild.textContent = boss.def.name; bossEl.querySelector('i').style.width = Math.max(0, (boss.hp / boss.def.hp) * 100) + '%'; }
-      const online = compassLine() + (multi ? `<br>${remotes.map.size + 1} en ligne` : '') + (inv.armor[1] && ITEMS[inv.armor[1].id].charge ? `<br>Réacteur dorsal ${Math.round(((inv.armor[1].c ?? 0) / ITEMS[inv.armor[1].id].charge.max) * 100)} %` : '');
+      const others = [...remotes.map.values()].filter((q) => q.target).map((q) => `<br>${q.name.replace(/</g, '&lt;')} ${q.target.d === dim ? toward(q.target.x, q.target.z) : '· ' + DIMS[q.target.d]}`).join('');
+      const marks = wps.filter((w) => w.on && w.d === dim).map((w) => `<br>◆ ${w.name.replace(/</g, '&lt;')} ${toward(w.x, w.z)}`).join('');
+      const online = compassLine() + marks + others + (inv.armor[1] && ITEMS[inv.armor[1].id].charge ? `<br>Réacteur dorsal ${Math.round(((inv.armor[1].c ?? 0) / ITEMS[inv.armor[1].id].charge.max) * 100)} %` : '');
       info.innerHTML = `ALTITUDE <b>${Math.max(0, Math.round(player.pos.y))}</b><br>${DIMS[dim]} · ${biome}${player.fly ? ' · en vol' : state}${creative ? '<br>MODE CRÉATIF' : ''}${Object.keys(fx).map((k) => `<br>${FX[k]?.name ?? k} ${Math.floor(fx[k] / 60)}:${String(Math.floor(fx[k] % 60)).padStart(2, '0')}`).join('')}${dim === 2 && !creative ? `<br>OXYGÈNE <b>${inv.hasMod('air') ? '∞' : Math.ceil(air) + ' %'}</b>` : ''}<br>${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${sky.night && dim === 0 ? ' · nuit' : ''}${online}`;
     }
     if (dirty && (saveTimer -= dt) <= 0) { saveTimer = 5; persist(); }

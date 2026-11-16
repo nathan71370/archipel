@@ -60,12 +60,12 @@ const LOAD_RADIUS = 6; // tronçons de terrain tenus en mémoire autour de chaqu
 // ---------- Monde partagé ----------
 let saved;
 try { saved = JSON.parse(fs.readFileSync(WORLD_FILE, 'utf8')); } catch { /* premier lancement */ }
-if (!saved?.seed || !Array.isArray(saved.edits?.[0])) saved = { id: crypto.randomUUID().slice(0, 8), seed: (Math.random() * 2 ** 31) | 0, time: 0.34, edits: [[], [], []] };
+if (!saved?.seed || !Array.isArray(saved.edits?.[0])) saved = { id: crypto.randomUUID().slice(0, 8), seed: (Math.random() * 2 ** 31) | 0, time: 0.34, edits: [[], [], []], gen: 2 };
 while (saved.edits.length < 3) saved.edits.push([]); // mondes ajoutés depuis : Ciel, Braise, Éther
 // Personnages : sac, position, journal de chaque joueur, retrouvés par son pseudo.
 const characters = saved.players && typeof saved.players === 'object' ? saved.players : {};
 const charKey = (name) => name.trim().toLowerCase();
-const meta = { id: saved.id, seed: saved.seed, time: saved.time, clock: saved.clock ?? 0 };
+const meta = { id: saved.id, seed: saved.seed, time: saved.time, clock: saved.clock ?? 0, gen: saved.gen ?? 1 };
 // Modifications des joueurs, par monde : Map(clé de tronçon -> Map(index local -> bloc))
 const edits = saved.edits.map((list) => new Map(list.map(([key, flat]) => {
   const m = new Map();
@@ -100,7 +100,7 @@ function spawnDrop(d, x, y, z, s, centered = true) {
 setInterval(() => { const now = Date.now(); for (const [k, d] of drops) if (now - d.born > 300000) { drops.delete(k); broadcast({ t: 'gone', k }); } }, 15000);
 
 // ---------- Terrain, machines, liquides, créatures ----------
-const worlds = [0, 1, 2].map((d) => { const w = new World(meta.seed, d, edits[d], null, null); w.headless = true; return w; });
+const worlds = [0, 1, 2].map((d) => { const w = new World(meta.seed, d, edits[d], null, null, meta.gen); w.headless = true; return w; });
 
 // Toute modification de bloc passe par ici : terrain du serveur, sauvegarde, joueurs, machines, liquides.
 function applySet(d, x, y, z, id, info, except) {
@@ -224,7 +224,7 @@ function onMessage(ws, raw) {
     const p = { id: nextId++, name, s: null, key: v ? 'u:' + v.userId : charKey(name), admin: v ? v.isAdmin : true };
     players.set(ws, p);
     ws.send(JSON.stringify({
-      t: 'welcome', id: p.id, worldId: meta.id, seed: meta.seed, time: meta.time, edits: editsOut(),
+      t: 'welcome', id: p.id, worldId: meta.id, seed: meta.seed, gen: meta.gen, time: meta.time, edits: editsOut(),
       drops: [...drops.values()], powered: sim.dims.map((D) => [...D.powered]), active: sim.dims.map((D) => [...D.active]),
       vis: sim.dims.map((D) => [...D.vis]), me: characters[p.key] ?? null, name: p.name, admin: p.admin,
       players: [...players.values()].filter((o) => o !== p).map((o) => ({ id: o.id, name: o.name })),

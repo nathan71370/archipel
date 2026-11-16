@@ -16,7 +16,6 @@ export const SMELT = [
   rec([[B.LOG, 1]], [I.COAL, 1], 6),
 ];
 const MILL = [
-  rec([[B.CRYSTAL, 2]], [I.GEM, 1], 5),
   rec([[I.IRON, 1]], [I.PLATE, 1], 4),
   rec([[I.COPPER, 1]], [I.WIRE, 3], 3),
 ];
@@ -79,6 +78,8 @@ const COMPRESS = [
 const ALLOYS = [
   rec([[I.IRON, 2], [I.CARBON, 1]], [I.STEEL, 2], 8),
   rec([[I.COPPER, 2], [B.CRYSTAL, 1]], [I.ELECTRUM, 2], 8),
+  // Le cristal brut est trop cassant pour un outil : il se trempe à l'acier. C'est ce qui ouvre le palier du cristal.
+  rec([[B.CRYSTAL, 2], [I.STEEL, 1]], [I.GEM, 2], 10),
 ];
 const CAN = [
   rec([[I.CAN, 1]], [I.FUEL, 1], 3),

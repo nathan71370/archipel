@@ -101,6 +101,11 @@ export class UI {
       const s = e.target.closest('[data-i]'), a = e.target.closest('[data-a]'), r = e.target.closest('[data-r]');
       const t = e.target.closest('[data-t]'), p = e.target.closest('[data-p]');
       const f = e.target.closest('[data-f]'), g = e.target.closest('[data-g]'), o = e.target.closest('[data-o]'), d = e.target.closest('[data-d]');
+      if (this.waypoints) {
+        const w = e.target.closest('[data-w]');
+        if (e.target.closest('[data-wadd]')) { this.hooks.wpAdd($('wpname')?.value ?? ''); this.render(); return; }
+        if (w) { this.hooks.wpDo(w.dataset.w, +w.dataset.wi); this.render(); return; }
+      }
       const fi = e.target.closest('[data-fi]');
       if (fi && this.filter) {
         // Poser un objet le désigne sans le consommer ; un clic à vide efface la case.
@@ -121,7 +126,8 @@ export class UI {
       if (o) { if (this.altar === 'mods') this.install(o.dataset.o); else this.enchant(o.dataset.o); this.refresh(); return; }
       if (d) { this.buy(this.trade.offers[+d.dataset.d]); this.refresh(); return; }
       if (e.target.closest('[data-e]')) { const cur = this.altarItem; this.altarItem = this.held; this.held = cur; this.refresh(); return; }
-      if (s) { if (e.shiftKey && this.tile) this.quickStore(+s.dataset.i); else this.click(this.inv.slots, +s.dataset.i, e.button, null); }
+      if (s) { if (e.shiftKey && this.tile) this.quickStore(+s.dataset.i); else if (e.shiftKey && !this.held) this.quickMove(+s.dataset.i); else this.click(this.inv.slots, +s.dataset.i, e.button, null); }
+      else if (a && e.shiftKey && !this.held) this.unequip(+a.dataset.a);
       else if (a) this.click(this.inv.armor, +a.dataset.a, e.button, +a.dataset.a);
       else if (r) this.craft(RECIPES[+r.dataset.r], e.shiftKey ? 5 : 1);
       else if (t) this.clickTile(+t.dataset.t, e.button, e.shiftKey);
@@ -132,6 +138,7 @@ export class UI {
     });
     // Nom d'un téléporteur : validé par Entrée ou en quittant le champ.
     this.el.inv.addEventListener('change', (e) => { if (e.target.id === 'padname' && this.tile?.padSet) this.tile.padSet({ name: e.target.value }); });
+    this.el.inv.addEventListener('keydown', (e) => { if (e.target.id === 'wpname' && e.code === 'Enter' && this.waypoints) { this.hooks.wpAdd(e.target.value); this.render(); } });
     this.el.search.addEventListener('input', () => { this.query = this.el.search.value; this.el.recipes.scrollTop = 0; this.render(); });
     addEventListener('mousemove', (e) => {
       if (!this.open) return;
@@ -206,7 +213,8 @@ export class UI {
   // ---------- Ouverture ----------
   // ctx : 'all' (touche E) ou 'bench' ; tile : lien vers un coffre ou une machine
   // altar : autel d'enchantement ; trade : { title, offers } d'un villageois
-  show({ ctx = 'all', tile = null, altar = false, trade = null, journal = null, filter = null } = {}) {
+  show({ ctx = 'all', tile = null, altar = false, trade = null, journal = null, filter = null, waypoints = false } = {}) {
+    this.waypoints = waypoints;
     this.journal = journal;
     this.filter = filter; // { slots, fluid, op(o, cb) } : filtre d'un raccord de tuyau
     this.ctx = ctx;
@@ -229,6 +237,7 @@ export class UI {
     this.trade = null;
     this.journal = null;
     this.filter = null;
+    this.waypoints = false;
     this.open = false;
     this.el.search.blur();
     this.el.inv.classList.add('hidden');
@@ -305,6 +314,31 @@ export class UI {
         done();
       });
     }
+  }
+
+  // Maj + clic sans conteneur ouvert : une armure s'enfile, le reste passe de la barre rapide au sac et inversement.
+  quickMove(i) {
+    const slots = this.inv.slots, st = slots[i];
+    if (!st) return;
+    const it = ITEMS[st.id];
+    if (it.armor && !this.inv.armor[it.armor.slot]) { this.inv.armor[it.armor.slot] = st; slots[i] = null; return; }
+    const [from, to] = i < 9 ? [9, 36] : [0, 9];
+    // D'abord compléter les piles du même objet, puis la première case libre.
+    if (it.stack > 1 && !st.e && !st.f && !st.m) for (let k = from; k < to && st.n > 0; k++) {
+      const o = slots[k];
+      if (!o || o.id !== st.id || o.n >= it.stack || o.e || o.f || o.m) continue;
+      const m = Math.min(st.n, it.stack - o.n);
+      o.n += m; st.n -= m;
+    }
+    if (st.n <= 0) { slots[i] = null; return; }
+    for (let k = from; k < to; k++) if (!slots[k]) { slots[k] = st; slots[i] = null; return; }
+  }
+  // Maj + clic sur une pièce portée : elle retourne dans le sac.
+  unequip(a) {
+    const st = this.inv.armor[a], free = this.inv.slots.indexOf(null, 9) >= 0 ? this.inv.slots.indexOf(null, 9) : this.inv.slots.indexOf(null);
+    if (!st || free < 0) return;
+    this.inv.slots[free] = st;
+    this.inv.armor[a] = null;
   }
 
   // Maj + clic dans le sac : range la pile dans le conteneur ouvert.
@@ -403,6 +437,15 @@ export class UI {
 
   renderSide() {
     const icon = (id, n) => `<span class="ing${this.inv.count(id) < n ? ' miss' : ''}" title="${ITEMS[id].name}"><img src="${this.icons[id].url}" alt="">${n}</span>`;
+    if (this.waypoints) {
+      const list = this.hooks.wpList();
+      $('crafttitle').textContent = 'Repères';
+      this.el.stations.textContent = 'Un repère suivi apparaît dans le monde et en haut à gauche, avec sa direction et sa distance.';
+      if (document.activeElement?.id !== 'wpname') this.el.tilebox.innerHTML = '<div class="wprow"><input id="wpname" type="text" maxlength="20" placeholder="Nom du repère"><button class="chip on" data-wadd="1">Ajouter ici</button></div>';
+      this.el.recipes.innerHTML = list.map((w, i) => `<div class="recipe wp${w.on ? '' : ' off'}"><div class="rname">${w.on ? '◆ ' : ''}${w.name.replace(/</g, '&lt;')}<small>${w.where}</small></div><div class="ings"><button class="chip" data-w="tog" data-wi="${i}">${w.on ? 'masquer' : 'suivre'}</button><button class="chip" data-w="del" data-wi="${i}">supprimer</button></div></div>`).join('')
+        || '<div class="muted">Aucun repère. Place-toi où tu veux et ajoute-en un.</div>';
+      return true;
+    }
     if (this.filter) {
       const f = this.filter;
       $('crafttitle').textContent = f.fluid ? 'Filtre à liquides' : 'Filtre à objets';
@@ -589,7 +632,7 @@ export class UI {
     const h = this.held;
     this.el.cursor.innerHTML = h ? `<img src="${this.icons[h.id].url}" alt="">${h.n > 1 ? `<span class="n">${h.n}</span>` : ''}` : '';
 
-    const crafting = !this.tile && !this.altar && !this.journal && !this.trade && !this.filter;
+    const crafting = !this.tile && !this.altar && !this.journal && !this.trade && !this.filter && !this.waypoints;
     this.el.craftbar.classList.toggle('hidden', !crafting);
     if (this.tile) { this.renderTile(); return; }
     if (this.renderSide()) return;
